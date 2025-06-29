@@ -1,3 +1,14 @@
+自用设备支持状态：
+
+| 设备                       | 源码状态    | 持有状态    |
+|---------------------------|------------|------------|
+| CAINIAO CNIoT-CORE        | 已提交上游   | 持有        |
+| OneThing Cloud OES        | 本仓库      | 持有        |
+| SMART AM40                | 已提交上游   | 持有        |
+| TIANNUO TN3399_V3         | 本仓库      | 售出        |
+
+original readme:
+
 <p align="center">
   <a href="#build-framework">
   <img src=".github/armbian-logo.png" alt="Armbian logo" width="144">
