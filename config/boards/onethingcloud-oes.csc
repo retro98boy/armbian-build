@@ -30,6 +30,8 @@ function post_family_config__onethingcloud-oes() {
 		dd if="${BLOBS_DIR}/reserved" of="$IMAGE" bs=1MiB seek=36 conv=fsync,notrunc 2>&1 # EPT partition table
 	}
 
+	unset ASOUND_STATE
+
 	case "${BRANCH}" in
 		current)
 			display_alert "$BOARD" "Use unifreq linux 5.15.y as the current kernel" "info"
