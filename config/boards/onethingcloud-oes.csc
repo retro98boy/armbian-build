@@ -3,7 +3,7 @@ BOARD_NAME="OneThing Cloud OES"
 BOARDFAMILY="meson-g12b"
 BOARD_MAINTAINER=""
 OFFSET="636" # Reserved for the EPT partition table and vendor U-Boot env
-BOOTSIZE="256"
+BOOTSIZE="512"
 BOOTFS_TYPE="fat"
 KERNEL_TARGET="current,edge"
 KERNEL_TEST_TARGET="current"
@@ -34,13 +34,13 @@ function post_family_config__onethingcloud-oes() {
 
 	case "${BRANCH}" in
 		current)
-			display_alert "$BOARD" "Use unifreq linux 5.15.y as the current kernel" "info"
+			display_alert "$BOARD" "Use chewitt linux 5.19.y as the current kernel" "info"
 
-			declare -g KERNELSOURCE="https://github.com/retro98boy/unifreq-linux-5.15.y.git"
-			declare -g KERNEL_MAJOR_MINOR="5.15"
-			declare -g KERNELBRANCH="branch:main"
-			declare -g LINUXFAMILY="oes-unifreq" # Separate kernel package from the regular `meson64` family
-			declare -g LINUXCONFIG="linux-oes-unifreq"
+			declare -g KERNELSOURCE="https://github.com/chewitt/linux"
+			declare -g KERNEL_MAJOR_MINOR="5.19"
+			declare -g KERNELBRANCH="branch:amlogic-5.19.y"
+			declare -g LINUXFAMILY="oes-chewitt" # Separate kernel package from the regular `meson64` family
+			declare -g LINUXCONFIG="linux-oes-chewitt"
 			;;
 
 		edge)
@@ -70,9 +70,9 @@ function post_family_tweaks__onethingcloud-oes() {
 
 			cat <<- EOF > "${SDCARD}/etc/fw_env.config"
 				# main
-				/dev/mmcblk2 0x27400000 0x10000
+				/dev/mmcblk1 0x27400000 0x10000
 				# redundance
-				# /dev/mmcblk2 0x27410000 0x10000
+				# /dev/mmcblk1 0x27410000 0x10000
 			EOF
 
 			;;
