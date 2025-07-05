@@ -10,6 +10,7 @@ KERNEL_TEST_TARGET="current"
 FULL_DESKTOP="no"
 SERIALCON="ttyAML0"
 BOOT_FDT_FILE="amlogic/meson-g12b-a311d-onethingcloud-oes.dtb"
+PACKAGE_LIST_BOARD="libubootenv-tool"
 
 function post_family_config__onethingcloud-oes() {
 	display_alert "$BOARD" "Use vendor U-Boot to boot the kernel" "info"
@@ -49,7 +50,7 @@ function post_family_config__onethingcloud-oes() {
 }
 
 function post_family_tweaks__onethingcloud-oes() {
-	fetch_from_repo "https://github.com/retro98boy/onethingcloud-oes-linux.git" "onethingcloud-oes-linux" "commit:627336376d2b6c179cb2b759d16fe60e054758b9"
+	fetch_from_repo "https://github.com/retro98boy/onethingcloud-oes-linux.git" "onethingcloud-oes-linux" "commit:f98f54c1b14e05e54a8590146a6ef632423ddae0"
 	BLOBS_DIR="${SRC}/cache/sources/onethingcloud-oes-linux"
 
 	display_alert "${BOARD}" "Installing the aml_autoscript to set U-Boot autoboot cmd on first startup" "info"
@@ -57,32 +58,20 @@ function post_family_tweaks__onethingcloud-oes() {
 	install -Dm755 "${BLOBS_DIR}/aml_autoscript.cmd" "${SDCARD}/boot/aml_autoscript.cmd"
 	install -Dm755 "${BLOBS_DIR}/aml_autoscript" "${SDCARD}/boot/aml_autoscript" # Vendor U-Boot will try to load it
 
-	display_alert "${BOARD}" "Installing fw_printenv and fw_setenv" "info"
-
-	if [ ! -d "${SDCARD}/usr/local/bin" ]; then
-		mkdir -p "${SDCARD}/usr/local/bin"
-	fi
-	install -Dm755 "${BLOBS_DIR}/fw_printenv" "${SDCARD}/usr/local/bin/fw_printenv"
-	install -Dm755 "${BLOBS_DIR}/fw_printenv" "${SDCARD}/usr/local/bin/fw_setenv"
+	display_alert "${BOARD}" "Installing U-Boot env setting" "info"
 
 	case "${BRANCH}" in
 		current)
 
 			cat <<- EOF > "${SDCARD}/etc/fw_env.config"
-				# main
-				/dev/mmcblk1 0x27400000 0x10000
-				# redundance
-				# /dev/mmcblk1 0x27410000 0x10000
+				/dev/mmcblk1 0x27400000 0x10000 0x27410000 0x10000
 			EOF
 
 			;;
 		edge)
 
 			cat <<- EOF > "${SDCARD}/etc/fw_env.config"
-				# main
-				/dev/mmcblk1 0x27400000 0x10000
-				# redundance
-				/dev/mmcblk1 0x27410000 0x10000
+				/dev/mmcblk1 0x27400000 0x10000 0x27410000 0x10000
 			EOF
 
 	esac
