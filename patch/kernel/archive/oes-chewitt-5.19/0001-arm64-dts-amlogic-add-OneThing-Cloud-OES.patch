@@ -39,10 +39,10 @@ index 000000000000..5b0378a128dd
 +};
 diff --git a/arch/arm64/boot/dts/amlogic/meson-g12b-a311d-onethingcloud-oes.dts b/arch/arm64/boot/dts/amlogic/meson-g12b-a311d-onethingcloud-oes.dts
 new file mode 100644
-index 000000000000..54ad2b7a8c5b
+index 000000000000..192b4dd38269
 --- /dev/null
 +++ b/arch/arm64/boot/dts/amlogic/meson-g12b-a311d-onethingcloud-oes.dts
-@@ -0,0 +1,380 @@
+@@ -0,0 +1,382 @@
 +// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
 +/*
 + * Copyright (c) 2019 BayLibre, SAS
@@ -351,6 +351,8 @@ index 000000000000..54ad2b7a8c5b
 +		/* MAC_INTR on GPIOZ_14 */
 +		/* interrupts = <IRQID_GPIOZ_14 IRQ_TYPE_LEVEL_LOW>; */
 +		interrupts = <26 IRQ_TYPE_LEVEL_LOW>; /* tested by voltmeter */
++
++		realtek,led-data = <0xC160>;
 +	};
 +};
 +
