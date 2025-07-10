@@ -2,7 +2,7 @@
 BOARD_NAME="OneThing Cloud OES"
 BOARDFAMILY="meson-g12b"
 BOARD_MAINTAINER=""
-OFFSET="636" # Reserved for the MPT and vendor U-Boot env
+OFFSET="636" # Reserved for the EPT and vendor U-Boot env
 BOOTSIZE="512"
 BOOTFS_TYPE="fat"
 KERNEL_TARGET="current,edge"
@@ -28,7 +28,7 @@ function post_family_config__onethingcloud-oes() {
 
 		dd if="${BLOBS_DIR}/DDR_ENC.USB" of="$IMAGE" bs=512 seek=1 conv=fsync,notrunc 2>&1
 		dd if="${BLOBS_DIR}/env-main" of="$IMAGE" bs=1MiB seek=628 conv=fsync,notrunc 2>&1 # Vendor U-Boot env with autoboot cmd
-		dd if="${BLOBS_DIR}/reserved" of="$IMAGE" bs=1MiB seek=36 conv=fsync,notrunc 2>&1 # Contain MPT
+		dd if="${BLOBS_DIR}/reserved" of="$IMAGE" bs=1MiB seek=36 conv=fsync,notrunc 2>&1 # Contain EPT
 	}
 
 	unset ASOUND_STATE
