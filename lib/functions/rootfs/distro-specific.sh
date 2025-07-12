@@ -80,8 +80,6 @@ function create_sources_list_and_deploy_repo_key() {
 
 	declare distro=""
 
-	APT_SIGNING_KEY_FILE="/usr/share/keyrings/armbian-archive-keyring.gpg"
-
 	# Drop deboostrap sources leftovers
 	rm -f "${basedir}/etc/apt/sources.list"
 
@@ -159,24 +157,28 @@ function create_sources_list_and_deploy_repo_key() {
 			;;
 	esac
 
-	# code to be made obsolete by making APA part of Armbian Core. #XXX
-	if [[ "${APA_IS_ACTIVE}" != "true" ]]; then
-		# add armbian key
-		display_alert "Adding Armbian repository and authentication key" "${when} :: /etc/apt/sources.list.d/armbian.sources" "info"
-		mkdir -p "${basedir}"/usr/share/keyrings
-		# change to binary form
-		gpg --dearmor < "${SRC}"/config/armbian.key > "${basedir}${APT_SIGNING_KEY_FILE}"
+	# add armbian key
+	display_alert "Adding Armbian repository and authentication key" "${when} :: /etc/apt/sources.list.d/armbian.sources" "info"
+	mkdir -p "${basedir}"/usr/share/keyrings
+	# change to binary form
+	APT_SIGNING_KEY_FILE="/usr/share/keyrings/armbian-archive-keyring.gpg"
+	gpg --batch --yes --dearmor < "${SRC}"/config/armbian.key > "${basedir}${APT_SIGNING_KEY_FILE}"
 
-		# lets link to the old file as armbian-config uses it and we can't set there to new file
-		# we user force linking as some old caches still exists
-		chroot "${basedir}" /bin/bash -c "ln -fs armbian-archive-keyring.gpg /usr/share/keyrings/armbian.gpg"
+	# deploy the qemu binary, no matter where the rootfs came from (built or cached)
+	deploy_qemu_binary_to_chroot "${basedir}" "${when}" # undeployed at end of this function
 
-		# lets keep old way for old distributions
-		if [[ "${RELEASE}" =~ (focal|bullseye) ]]; then
-			cp "${SRC}"/config/armbian.key "${basedir}"
-			chroot "${basedir}" /bin/bash -c "cat armbian.key | apt-key add - > /dev/null 2>&1"
-		fi
+	# lets link to the old file as armbian-config uses it and we can't set there to new file
+	# we user force linking as some old caches still exists
+	chroot "${basedir}" /bin/bash -c "ln -fs armbian-archive-keyring.gpg /usr/share/keyrings/armbian.gpg"
+
+	# lets keep old way for old distributions
+	if [[ "${RELEASE}" =~ (focal|bullseye) ]]; then
+		cp "${SRC}"/config/armbian.key "${basedir}"
+		chroot "${basedir}" /bin/bash -c "cat armbian.key | apt-key add - > /dev/null 2>&1"
 	fi
+
+	# undeploy the qemu binary from the image; we don't want to ship the host's qemu in the target image
+	undeploy_qemu_binary_from_chroot "${basedir}" "${when}"
 
 	# Add Armbian APT repository
 	declare -a components=()
