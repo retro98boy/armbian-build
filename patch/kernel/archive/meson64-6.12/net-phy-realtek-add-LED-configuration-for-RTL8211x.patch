@@ -1,0 +1,41 @@
+From 419cbb7c4d1d36314a2e7ed74cce2ce5d190a04e Mon Sep 17 00:00:00 2001
+From: retro98boy <retro98boy@qq.com>
+Date: Sat, 26 Jul 2025 18:05:21 +0800
+Subject: [PATCH] net: phy: realtek: add LED configuration for RTL8211x
+
+---
+ drivers/net/phy/realtek.c | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/drivers/net/phy/realtek.c b/drivers/net/phy/realtek.c
+index 166f6a728..f2a2a907a 100644
+--- a/drivers/net/phy/realtek.c
++++ b/drivers/net/phy/realtek.c
+@@ -119,6 +119,15 @@ static int rtl821x_write_page(struct phy_device *phydev, int page)
+ 	return __phy_write(phydev, RTL821x_PAGE_SELECT, page);
+ }
+ 
++static void rtl821x_led_of_init(struct phy_device *phydev)
++{
++	struct device *dev = &phydev->mdio.dev;
++	u32 val;
++
++	if (!of_property_read_u32(dev->of_node, "realtek,ledsel", &val))
++		phy_write_paged(phydev, 0xd04, 0x10, val);
++}
++
+ static int rtl821x_probe(struct phy_device *phydev)
+ {
+ 	struct device *dev = &phydev->mdio.dev;
+@@ -438,6 +447,8 @@ static int rtl8211f_config_init(struct phy_device *phydev)
+ 			val_rxdly ? "enabled" : "disabled");
+ 	}
+ 
++	rtl821x_led_of_init(phydev);
++
+ 	if (priv->has_phycr2) {
+ 		ret = phy_modify_paged(phydev, 0xa43, RTL8211F_PHYCR2,
+ 				       RTL8211F_CLKOUT_EN, priv->phycr2);
+-- 
+2.50.1
+

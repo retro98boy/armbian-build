@@ -128,10 +128,10 @@ index 00000000..6c4e2027
 +CONFIG_ZSTD=y
 diff --git a/dts/upstream/src/arm64/amlogic/meson-g12b-a311d-cainiao-lemo-xiaoc.dts b/dts/upstream/src/arm64/amlogic/meson-g12b-a311d-cainiao-lemo-xiaoc.dts
 new file mode 100644
-index 00000000..084a651c
+index 00000000..ab71ff54
 --- /dev/null
 +++ b/dts/upstream/src/arm64/amlogic/meson-g12b-a311d-cainiao-lemo-xiaoc.dts
-@@ -0,0 +1,574 @@
+@@ -0,0 +1,584 @@
 +// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
 +/*
 + * Copyright (c) 2019 BayLibre, SAS
@@ -333,6 +333,16 @@ index 00000000..084a651c
 +		vin-supply = <&vcc_5v>;
 +	};
 +
++	vcc_5v_typec: regulator-vcc-5v-typec {
++		compatible = "regulator-fixed";
++		enable-active-high;
++		gpio = <&gpio GPIOA_11 GPIO_ACTIVE_HIGH>;
++		regulator-name = "vcc_5v_typec";
++		regulator-always-on;
++		regulator-boot-on;
++		vin-supply = <&vcc_5v>;
++	};
++
 +	vdd_amp: regulator-vdd-amp {
 +		compatible = "regulator-fixed";
 +		regulator-name = "vdd_amp";
@@ -526,7 +536,7 @@ index 00000000..084a651c
 +		/* MAC_INTR on GPIOZ_14 */
 +		interrupts = <IRQID_GPIOZ_14 IRQ_TYPE_LEVEL_LOW>; /* tested by voltmeter */
 +
-+		realtek,led-data = <0xc160>;
++		realtek,ledsel = <0xc160>;
 +	};
 +};
 +
