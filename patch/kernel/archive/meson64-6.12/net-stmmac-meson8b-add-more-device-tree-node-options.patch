@@ -1,6 +1,6 @@
-From 857d820234d67a8825fd74564c2c928d3304019e Mon Sep 17 00:00:00 2001
+From e8742769ff4694fefba7a6d96c92faaa6d200ea5 Mon Sep 17 00:00:00 2001
 From: retro98boy <retro98boy@qq.com>
-Date: Sun, 6 Jul 2025 16:24:06 +0800
+Date: Sun, 6 Jul 2025 12:39:47 +0800
 Subject: [PATCH] net: stmmac: meson8b: add more device tree node options
 
 Add an option to retain the MAC's RX delay setting when using RGMII ID mode, and add an option to invert the RX clock.
@@ -9,7 +9,7 @@ Add an option to retain the MAC's RX delay setting when using RGMII ID mode, and
  1 file changed, 23 insertions(+), 2 deletions(-)
 
 diff --git a/drivers/net/ethernet/stmicro/stmmac/dwmac-meson8b.c b/drivers/net/ethernet/stmicro/stmmac/dwmac-meson8b.c
-index c7a6588d9398..0f09b7b4d5f1 100644
+index b23944aa3..b356bc4e3 100644
 --- a/drivers/net/ethernet/stmicro/stmmac/dwmac-meson8b.c
 +++ b/drivers/net/ethernet/stmicro/stmmac/dwmac-meson8b.c
 @@ -29,6 +29,8 @@
@@ -30,7 +30,7 @@ index c7a6588d9398..0f09b7b4d5f1 100644
  	struct clk			*timing_adj_clk;
  };
  
-@@ -301,7 +305,8 @@ static int meson8b_init_rgmii_delays(struct meson8b_dwmac *dwmac)
+@@ -303,7 +307,8 @@ static int meson8b_init_rgmii_delays(struct meson8b_dwmac *dwmac)
  		break;
  	case PHY_INTERFACE_MODE_RGMII_RXID:
  		delay_config = tx_dly_config;
@@ -40,7 +40,7 @@ index c7a6588d9398..0f09b7b4d5f1 100644
  		break;
  	case PHY_INTERFACE_MODE_RGMII_TXID:
  		delay_config = rx_adj_config;
-@@ -309,7 +314,8 @@ static int meson8b_init_rgmii_delays(struct meson8b_dwmac *dwmac)
+@@ -311,7 +316,8 @@ static int meson8b_init_rgmii_delays(struct meson8b_dwmac *dwmac)
  	case PHY_INTERFACE_MODE_RGMII_ID:
  	case PHY_INTERFACE_MODE_RMII:
  		delay_config = 0;
@@ -50,7 +50,7 @@ index c7a6588d9398..0f09b7b4d5f1 100644
  		break;
  	default:
  		dev_err(dwmac->dev, "unsupported phy-mode %s\n",
-@@ -339,6 +345,11 @@ static int meson8b_init_rgmii_delays(struct meson8b_dwmac *dwmac)
+@@ -341,6 +347,11 @@ static int meson8b_init_rgmii_delays(struct meson8b_dwmac *dwmac)
  				PRG_ETH0_ADJ_DELAY | PRG_ETH0_ADJ_SKEW,
  				delay_config);
  
@@ -62,7 +62,7 @@ index c7a6588d9398..0f09b7b4d5f1 100644
  	meson8b_dwmac_mask_bits(dwmac, PRG_ETH1, PRG_ETH1_CFG_RXCLK_DLY,
  				cfg_rxclk_dly);
  
-@@ -458,6 +469,16 @@ static int meson8b_dwmac_probe(struct platform_device *pdev)
+@@ -452,6 +463,16 @@ static int meson8b_dwmac_probe(struct platform_device *pdev)
  		}
  	}
  
@@ -78,7 +78,7 @@ index c7a6588d9398..0f09b7b4d5f1 100644
 +
  	dwmac->timing_adj_clk = devm_clk_get_optional(dwmac->dev,
  						      "timing-adjustment");
- 	if (IS_ERR(dwmac->timing_adj_clk)) {
+ 	if (IS_ERR(dwmac->timing_adj_clk))
 -- 
 2.50.0
 

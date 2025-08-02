@@ -1,0 +1,28 @@
+From 933afea8b8a472bd4d6bb69e0e5872ff161d864c Mon Sep 17 00:00:00 2001
+From: retro98boy <retro98boy@qq.com>
+Date: Sat, 2 Aug 2025 17:53:22 +0800
+Subject: [PATCH] PCI: dwc: Add a device tree property to skip PCIe version
+ detection
+
+https://github.com/unifreq/linux-6.12.y/pull/16
+---
+ drivers/pci/controller/dwc/pcie-designware-host.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/pci/controller/dwc/pcie-designware-host.c b/drivers/pci/controller/dwc/pcie-designware-host.c
+index 120e2aca5..00538bb06 100644
+--- a/drivers/pci/controller/dwc/pcie-designware-host.c
++++ b/drivers/pci/controller/dwc/pcie-designware-host.c
+@@ -500,7 +500,8 @@ int dw_pcie_host_init(struct dw_pcie_rp *pp)
+ 		}
+ 	}
+ 
+-	dw_pcie_version_detect(pci);
++	if(!of_property_read_bool(np, "skip-version-detect"))
++		dw_pcie_version_detect(pci);
+ 
+ 	dw_pcie_iatu_detect(pci);
+ 
+-- 
+2.50.1
+

@@ -32,21 +32,6 @@ function post_family_config__onethingcloud-oes() {
 	}
 
 	unset ASOUND_STATE
-
-	case "${BRANCH}" in
-		current)
-			display_alert "$BOARD" "Use chewitt linux 5.19.y as the current kernel" "info"
-
-			declare -g KERNELSOURCE="https://github.com/chewitt/linux"
-			declare -g KERNEL_MAJOR_MINOR="5.19"
-			declare -g KERNELBRANCH="branch:amlogic-5.19.y"
-			declare -g LINUXFAMILY="oes-chewitt" # Separate kernel package from the regular `meson64` family
-			declare -g LINUXCONFIG="linux-oes-chewitt"
-			;;
-
-		edge)
-			# As is
-	esac
 }
 
 function post_family_tweaks__onethingcloud-oes() {
@@ -60,19 +45,7 @@ function post_family_tweaks__onethingcloud-oes() {
 
 	display_alert "${BOARD}" "Installing U-Boot env setting" "info"
 
-	case "${BRANCH}" in
-		current)
-
-			cat <<- EOF > "${SDCARD}/etc/fw_env.config"
-				/dev/mmcblk1 0x27400000 0x10000 0x27410000 0x10000
-			EOF
-
-			;;
-		edge)
-
-			cat <<- EOF > "${SDCARD}/etc/fw_env.config"
-				/dev/mmcblk1 0x27400000 0x10000 0x27410000 0x10000
-			EOF
-
-	esac
+	cat <<- EOF > "${SDCARD}/etc/fw_env.config"
+		/dev/mmcblk1 0x27400000 0x10000 0x27410000 0x10000
+	EOF
 }
