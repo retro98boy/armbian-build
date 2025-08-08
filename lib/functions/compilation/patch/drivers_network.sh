@@ -210,6 +210,9 @@ driver_rtl8811_rtl8812_rtl8814_rtl8821() {
 		echo "obj-\$(CONFIG_88XXAU) += rtl8812au/" >> "$kerneldir/drivers/net/wireless/Makefile"
 		sed -i '/source "drivers\/net\/wireless\/ti\/Kconfig"/a source "drivers\/net\/wireless\/rtl8812au\/Kconfig"' \
 			"$kerneldir/drivers/net/wireless/Kconfig"
+
+		# fix compilation for kernels >= 6.16
+		process_patch_file "${SRC}/patch/misc/wireless-rtl8812au-Fix-6.16.patch" "applying"
 	fi
 }
 
@@ -220,11 +223,11 @@ driver_xradio_xr819() {
 	if linux-version compare "${version}" ge 4.19 && [[ "$LINUXFAMILY" == sunxi* ]]; then
 
 		# Attach to specific commit (is branch:master)
-		local xradio_xr819_ver="commit:506fbc323f1c675d037eaf7ee928939394761aee" # Commit date: Dec 6, 2024 (please update when updating commit ref)
+		local xradio_xr819_ver="commit:684a91a3692a964c5886dcf4369874cc7c19c0a4" # Commit date: Aug 7, 2025 (please update when updating commit ref)
 
 		display_alert "Adding" "Wireless drivers for Xradio XR819 chipsets" "info"
 
-		fetch_from_repo "$GITHUB_SOURCE/fifteenhex/xradio" "xradio" "${xradio_xr819_ver}" "yes" # https://github.com/fifteenhex/xradio
+		fetch_from_repo "$GITHUB_SOURCE/igorpecovnik/xradio" "xradio" "${xradio_xr819_ver}" "yes" # Forked from https://github.com/fifteenhex/xradio
 		cd "$kerneldir" || exit
 		rm -rf "$kerneldir/drivers/net/wireless/xradio"
 		mkdir -p "$kerneldir/drivers/net/wireless/xradio/"
@@ -291,6 +294,9 @@ driver_rtl8811CU_rtl8821C() {
 		echo "obj-\$(CONFIG_RTL8821CU) += rtl8811cu/" >> "$kerneldir/drivers/net/wireless/Makefile"
 		sed -i '/source "drivers\/net\/wireless\/ti\/Kconfig"/a source "drivers\/net\/wireless\/rtl8811cu\/Kconfig"' \
 			"$kerneldir/drivers/net/wireless/Kconfig"
+
+		# fix compilation for kernels >= 6.16
+		process_patch_file "${SRC}/patch/misc/wireless-rtl8811cu-Fix-6.16.patch" "applying"
 	fi
 }
 
@@ -332,6 +338,9 @@ driver_rtl88x2bu() {
 		echo "obj-\$(CONFIG_RTL8822BU) += rtl88x2bu/" >> "$kerneldir/drivers/net/wireless/Makefile"
 		sed -i "/source \"drivers\/net\/wireless\/ti\/Kconfig\"/a source \"drivers\/net\/wireless\/rtl88x2bu\/Kconfig\"" \
 			"$kerneldir/drivers/net/wireless/Kconfig"
+
+		# fix compilation for kernels >= 6.16
+		process_patch_file "${SRC}/patch/misc/wireless-rtl88x2bu-Fix-6.16.patch" "applying"
 
 	fi
 }
