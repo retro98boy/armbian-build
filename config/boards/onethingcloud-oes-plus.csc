@@ -1,5 +1,5 @@
 # Amlogic A311D 4GB RAM 8GB eMMC GBE USB 2.0 PCIe ASM1064
-BOARD_NAME="OneThing Cloud OES"
+BOARD_NAME="OneThing Cloud OES Plus"
 BOARDFAMILY="meson-g12b"
 BOARD_MAINTAINER=""
 OFFSET="636" # Reserved for the EPT and vendor U-Boot env
@@ -9,10 +9,10 @@ KERNEL_TARGET="current,edge"
 KERNEL_TEST_TARGET="current"
 FULL_DESKTOP="no"
 SERIALCON="ttyAML0"
-BOOT_FDT_FILE="amlogic/meson-g12b-a311d-onethingcloud-oes.dtb"
+BOOT_FDT_FILE="amlogic/meson-g12b-s922x-onethingcloud-oes-plus.dtb"
 PACKAGE_LIST_BOARD="libubootenv-tool"
 
-function post_family_config__onethingcloud-oes() {
+function post_family_config__onethingcloud-oes-plus() {
 	display_alert "$BOARD" "Use vendor U-Boot to boot the kernel" "info"
 
 	unset BOOTSOURCE
@@ -22,11 +22,11 @@ function post_family_config__onethingcloud-oes() {
 	unset post_build_image_modify
 	post_build_image_modify() {
 		local IMAGE=${1}
-		BLOBS_DIR="${SRC}/cache/sources/onethingcloud-oes"
+		BLOBS_DIR="${SRC}/cache/sources/onethingcloud-oes-plus"
 
 		display_alert "${BOARD}" "Installing the vendor FIP with secure boot enabled to sdcard.img" "info"
 
-		dd if="${BLOBS_DIR}/DDR_ENC.USB" of="$IMAGE" bs=512 seek=1 conv=fsync,notrunc 2>&1
+		dd if="${BLOBS_DIR}/fip" of="$IMAGE" bs=512 seek=1 conv=fsync,notrunc 2>&1
 		dd if="${BLOBS_DIR}/env-main" of="$IMAGE" bs=1MiB seek=628 conv=fsync,notrunc 2>&1 # Vendor U-Boot env with autoboot cmd
 		dd if="${BLOBS_DIR}/reserved" of="$IMAGE" bs=1MiB seek=36 conv=fsync,notrunc 2>&1 # Contain EPT
 	}
@@ -34,9 +34,9 @@ function post_family_config__onethingcloud-oes() {
 	unset ASOUND_STATE
 }
 
-function post_family_tweaks__onethingcloud-oes() {
-	fetch_from_repo "https://github.com/retro98boy/onethingcloud-oes-linux.git" "onethingcloud-oes" "commit:f98f54c1b14e05e54a8590146a6ef632423ddae0"
-	BLOBS_DIR="${SRC}/cache/sources/onethingcloud-oes"
+function post_family_tweaks__onethingcloud-oes-plus() {
+	fetch_from_repo "https://github.com/retro98boy/onethingcloud-oes-linux.git" "onethingcloud-oes-plus" "commit:27c11b2b6b1f6e85abd94b6375c04b2bfd550142"
+	BLOBS_DIR="${SRC}/cache/sources/onethingcloud-oes-plus"
 
 	display_alert "${BOARD}" "Installing the aml_autoscript to set U-Boot autoboot cmd on first startup" "info"
 
