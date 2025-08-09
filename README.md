@@ -5,6 +5,7 @@
 | CAINIAO CNIoT-CORE        | 已提交上游   | 持有        |
 | CAINIAO LEMO XIAOC        | 本仓库      | 持有        |
 | OneThing Cloud OES        | 本仓库      | 持有        |
+| OneThing Cloud OES Plus   | 本仓库      | 持有        |
 | SMART AM40                | 已提交上游   | 持有        |
 | TIANNUO TN3399_V3         | 本仓库      | 售出        |
 

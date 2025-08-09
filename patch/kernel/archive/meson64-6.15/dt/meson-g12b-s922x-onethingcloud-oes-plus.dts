@@ -76,7 +76,7 @@
 		pwr-led-red {
 			function = LED_FUNCTION_POWER;
 			color = <LED_COLOR_ID_RED>;
-			gpios = <&gpio_ao GPIOAO_10 GPIO_ACTIVE_HIGH>;
+			gpios = <&gpio_ao GPIOAO_10 GPIO_ACTIVE_LOW>;
 			default-state = "off";
 		};
 
