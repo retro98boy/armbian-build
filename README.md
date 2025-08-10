@@ -1,15 +1,27 @@
-自用设备支持状态：
+# 自用设备支持状态
 
-| 设备                       | 源码状态    | 持有状态    |
-|---------------------------|------------|------------|
-| CAINIAO CNIoT-CORE        | 已提交上游   | 持有        |
-| CAINIAO LEMO XIAOC        | 本仓库      | 持有        |
-| OneThing Cloud OES        | 本仓库      | 持有        |
-| OneThing Cloud OES Plus   | 本仓库      | 持有        |
-| SMART AM40                | 已提交上游   | 持有        |
-| TIANNUO TN3399_V3         | 本仓库      | 售出        |
+| 设备                       | 源码状态    | 持有状态    | 启动类型                                |
+|---------------------------|------------|------------|---------------------------------------|
+| CAINIAO CNIoT-CORE        | 已提交上游   | 持有        | mainline U-Boot                      |
+| CAINIAO LEMO XIAOC        | 本仓库      | 持有        | mainline U-Boot                       |
+| OneThing Cloud OES        | 本仓库      | 持有        | onboard vendor U-Boot (secure boot)   |
+| OneThing Cloud OES Plus   | 本仓库      | 持有        | onboard vendor U-Boot (secure boot)   |
+| SMART AM40                | 已提交上游   | 持有        | mainline U-Boot                       |
+| TIANNUO TN3399_V3         | 本仓库      | 售出        | mainline U-Boot                       |
 
-original readme:
+# 下载
+
+[最新镜像](https://github.com/retro98boy/armbian-build/releases/tag/latest-release)
+
+[最新deb](https://github.com/retro98boy/armbian-build/releases/tag/latest-deb)
+
+# 如何更新
+
+正常使用apt命令更新一般软件包
+
+本仓库维护的设备不在Armbian/Ubuntu存储库中，所以需要去本仓库发布界面下载最新deb手动安装，包括内核和每个设备的私有deb
+
+# Original README
 
 <h2 align="center">
   <img src="https://raw.githubusercontent.com/armbian/.github/master/profile/logo.png" alt="Armbian logo" width="25%">
