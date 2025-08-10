@@ -9,7 +9,7 @@ KERNEL_TARGET="current,edge"
 KERNEL_TEST_TARGET="current"
 FULL_DESKTOP="no"
 SERIALCON="ttyAML0"
-BOOT_FDT_FILE="amlogic/meson-g12b-a311d-onethingcloud-oes.dtb"
+BOOT_FDT_FILE="amlogic/meson-g12b-a311d-oes.dtb"
 PACKAGE_LIST_BOARD="libubootenv-tool"
 
 function post_family_config__onethingcloud-oes() {
