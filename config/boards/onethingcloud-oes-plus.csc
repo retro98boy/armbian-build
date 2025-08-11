@@ -10,7 +10,7 @@ KERNEL_TEST_TARGET="current"
 FULL_DESKTOP="no"
 SERIALCON="ttyAML0"
 BOOT_FDT_FILE="amlogic/meson-g12b-s922x-oes-plus.dtb"
-PACKAGE_LIST_BOARD="libubootenv-tool"
+PACKAGE_LIST_BOARD="libubootenv-tool ttyd"
 
 function post_family_config__onethingcloud-oes-plus() {
 	display_alert "$BOARD" "Use vendor U-Boot to boot the kernel" "info"
@@ -47,5 +47,11 @@ function post_family_tweaks__onethingcloud-oes-plus() {
 
 	cat <<- EOF > "${SDCARD}/etc/fw_env.config"
 		/dev/mmcblk1 0x27400000 0x10000 0x27410000 0x10000
+	EOF
+
+	display_alert "${BOARD}" "Setting TTYD" "info"
+
+	cat <<- EOF > "${SDCARD}/etc/default/ttyd"
+		TTYD_OPTIONS="-W -p 7681 -O login"
 	EOF
 }
