@@ -2,8 +2,8 @@
 BOARD_NAME="OneThing Cloud OES Plus"
 BOARDFAMILY="meson-g12b"
 BOARD_MAINTAINER=""
-OFFSET="636" # Reserved for the EPT and vendor U-Boot env
-BOOTSIZE="512"
+OFFSET="100" # Reserved for the EPT and vendor U-Boot env
+BOOTSIZE="256"
 BOOTFS_TYPE="fat"
 KERNEL_TARGET="current,edge"
 KERNEL_TEST_TARGET="current"
@@ -27,7 +27,7 @@ function post_family_config__onethingcloud-oes-plus() {
 		display_alert "${BOARD}" "Installing the vendor FIP with secure boot enabled to sdcard.img" "info"
 
 		dd if="${BLOBS_DIR}/fip" of="$IMAGE" bs=512 seek=1 conv=fsync,notrunc 2>&1
-		dd if="${BLOBS_DIR}/env-main" of="$IMAGE" bs=1MiB seek=628 conv=fsync,notrunc 2>&1 # Vendor U-Boot env with autoboot cmd
+		dd if="${BLOBS_DIR}/env-main" of="$IMAGE" bs=1MiB seek=4 conv=fsync,notrunc 2>&1 # Vendor U-Boot env with autoboot cmd
 		dd if="${BLOBS_DIR}/reserved" of="$IMAGE" bs=1MiB seek=36 conv=fsync,notrunc 2>&1 # Contain EPT
 	}
 
@@ -35,7 +35,7 @@ function post_family_config__onethingcloud-oes-plus() {
 }
 
 function post_family_tweaks__onethingcloud-oes-plus() {
-	fetch_from_repo "https://github.com/retro98boy/onethingcloud-oes-linux.git" "onethingcloud-oes-plus" "commit:27c11b2b6b1f6e85abd94b6375c04b2bfd550142"
+	fetch_from_repo "https://github.com/retro98boy/onethingcloud-oes-linux.git" "onethingcloud-oes-plus" "commit:7c854dcd5d8e922fc7738bd0b80efb8051e946fb"
 	BLOBS_DIR="${SRC}/cache/sources/onethingcloud-oes-plus"
 
 	display_alert "${BOARD}" "Installing the aml_autoscript to set U-Boot autoboot cmd on first startup" "info"
@@ -46,7 +46,9 @@ function post_family_tweaks__onethingcloud-oes-plus() {
 	display_alert "${BOARD}" "Installing U-Boot env setting" "info"
 
 	cat <<- EOF > "${SDCARD}/etc/fw_env.config"
-		/dev/mmcblk1 0x27400000 0x10000 0x27410000 0x10000
+		# stock EPT
+		# /dev/mmcblk1 0x27400000 0x10000 0x27410000 0x10000
+		/dev/mmcblk1 0x400000 0x10000 0x410000 0x10000
 	EOF
 
 	display_alert "${BOARD}" "Setting TTYD" "info"
