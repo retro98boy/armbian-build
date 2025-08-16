@@ -4,10 +4,10 @@
 |---------------------------|------------|------------|---------------------------------------|
 | CAINIAO CNIoT-CORE        | 已提交上游   | 持有        | mainline U-Boot                      |
 | CAINIAO LEMO XIAOC        | 本仓库      | 持有        | mainline U-Boot                       |
-| OneThing Cloud OES        | 本仓库      | 持有        | onboard vendor U-Boot (secure boot)   |
+| OneThing Cloud OES        | 本仓库      | 不再持有      | onboard vendor U-Boot (secure boot)   |
 | OneThing Cloud OES Plus   | 本仓库      | 持有        | onboard vendor U-Boot (secure boot)   |
 | SMART AM40                | 已提交上游   | 持有        | mainline U-Boot                       |
-| TIANNUO TN3399_V3         | 本仓库      | 售出        | mainline U-Boot                       |
+| TIANNUO TN3399_V3         | 本仓库      | 不再持有      | mainline U-Boot                       |
 
 # 下载
 
