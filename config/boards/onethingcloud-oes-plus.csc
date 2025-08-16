@@ -35,7 +35,7 @@ function post_family_config__onethingcloud-oes-plus() {
 }
 
 function post_family_tweaks__onethingcloud-oes-plus() {
-	fetch_from_repo "https://github.com/retro98boy/onethingcloud-oes-linux.git" "onethingcloud-oes-plus" "commit:7c854dcd5d8e922fc7738bd0b80efb8051e946fb"
+	fetch_from_repo "https://github.com/retro98boy/onethingcloud-oes-linux.git" "onethingcloud-oes-plus" "commit:2371bafca82d8ca0c3e34bd17bf2879c25df5d08"
 	BLOBS_DIR="${SRC}/cache/sources/onethingcloud-oes-plus"
 
 	display_alert "${BOARD}" "Installing the aml_autoscript to set U-Boot autoboot cmd on first startup" "info"
