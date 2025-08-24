@@ -36,9 +36,11 @@ else
 	setenv plymouthargs "splash=verbose"
 fi
 
-setexpr bootargs sub "rootfstype=\\S*" "rootfstype=${rootfstype}" "${bootargs}"
+# Make sure to remove rootfstype=ramfs from bootargs
+setexpr bootargs sub "rootfstype=\\S*" "" "${bootargs}"
+setexpr bootargs sub "rootfstype=\\S*" "" "${bootargs}"
 
-setenv bootargs "root=${rootdev} ${bootargs} ${consoleargs} partition_type=generic loglevel=${verbosity} ${plymouthargs} ${extraargs} ${extraboardargs}"
+setenv bootargs "root=${rootdev} rootfstype=${rootfstype} ${bootargs} ${consoleargs} partition_type=generic loglevel=${verbosity} ${plymouthargs} ${extraargs} ${extraboardargs}"
 
 load ${devtype} ${devnum} ${fdt_addr_r} ${prefix}dtb/${fdtfile}
 fdt addr ${fdt_addr_r}
