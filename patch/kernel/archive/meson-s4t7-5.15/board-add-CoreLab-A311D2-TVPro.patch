@@ -1,14 +1,14 @@
-diff -uprN b/common_drivers/arch/arm64/boot/dts/amlogic/Makefile a/common_drivers/arch/arm64/boot/dts/amlogic/Makefile
---- b/common_drivers/arch/arm64/boot/dts/amlogic/Makefile	2025-08-24 17:54:50.551091919 +0800
-+++ a/common_drivers/arch/arm64/boot/dts/amlogic/Makefile	2025-08-24 17:54:22.076709314 +0800
+diff -uprN a/common_drivers/arch/arm64/boot/dts/amlogic/Makefile b/common_drivers/arch/arm64/boot/dts/amlogic/Makefile
+--- a/common_drivers/arch/arm64/boot/dts/amlogic/Makefile	2025-08-26 23:07:10.711293371 +0800
++++ b/common_drivers/arch/arm64/boot/dts/amlogic/Makefile	2025-08-26 23:06:48.211791474 +0800
 @@ -4,3 +4,4 @@ dtb-y += kvim4.dtb
  dtb-y += kvim3.dtb
  dtb-y += kvim3l.dtb
  dtb-y += kvim1s.dtb
-+dtb-y += tvpro.dtb
-diff -uprN b/common_drivers/arch/arm64/boot/dts/amlogic/tvpro.dts a/common_drivers/arch/arm64/boot/dts/amlogic/tvpro.dts
---- b/common_drivers/arch/arm64/boot/dts/amlogic/tvpro.dts	1970-01-01 08:00:00.000000000 +0800
-+++ a/common_drivers/arch/arm64/boot/dts/amlogic/tvpro.dts	2025-08-24 17:54:22.076709314 +0800
++dtb-y += t7-tvpro-8g.dtb
+diff -uprN a/common_drivers/arch/arm64/boot/dts/amlogic/t7-tvpro-8g.dts b/common_drivers/arch/arm64/boot/dts/amlogic/t7-tvpro-8g.dts
+--- a/common_drivers/arch/arm64/boot/dts/amlogic/t7-tvpro-8g.dts	1970-01-01 08:00:00.000000000 +0800
++++ b/common_drivers/arch/arm64/boot/dts/amlogic/t7-tvpro-8g.dts	2025-08-26 23:06:48.211791474 +0800
 @@ -0,0 +1,2034 @@
 +// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
 +/*
