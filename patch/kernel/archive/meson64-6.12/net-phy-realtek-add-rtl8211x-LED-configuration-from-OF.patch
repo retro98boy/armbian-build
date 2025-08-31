@@ -1,8 +1,9 @@
-From 419cbb7c4d1d36314a2e7ed74cce2ce5d190a04e Mon Sep 17 00:00:00 2001
-From: retro98boy <retro98boy@qq.com>
-Date: Sat, 26 Jul 2025 18:05:21 +0800
-Subject: [PATCH] net: phy: realtek: add LED configuration for RTL8211x
+From d743827264d875135da5da331fe2156d48c8ee7c Mon Sep 17 00:00:00 2001
+From: John Doe <john.doe@somewhere.on.planet>
+Date: Sat, 30 Aug 2025 14:07:36 +0800
+Subject: [PATCH 1/2] net: phy: realtek: add rtl8211x LED configuration from OF
 
+Signed-off-by: retro98boy <retro98boy@qq.com>
 ---
  drivers/net/phy/realtek.c | 11 +++++++++++
  1 file changed, 11 insertions(+)
@@ -20,7 +21,7 @@ index 166f6a728..f2a2a907a 100644
 +	struct device *dev = &phydev->mdio.dev;
 +	u32 val;
 +
-+	if (!of_property_read_u32(dev->of_node, "realtek,ledsel", &val))
++	if (!of_property_read_u32(dev->of_node, "realtek,led-data", &val))
 +		phy_write_paged(phydev, 0xd04, 0x10, val);
 +}
 +
@@ -37,5 +38,5 @@ index 166f6a728..f2a2a907a 100644
  		ret = phy_modify_paged(phydev, 0xa43, RTL8211F_PHYCR2,
  				       RTL8211F_CLKOUT_EN, priv->phycr2);
 -- 
-2.50.1
+2.51.0
 
