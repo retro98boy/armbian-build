@@ -1,0 +1,109 @@
+Subject: usb: typec: fusb302: handle always-on VBUS on internal links
+
+Report VBUS according to the source state on permanent internal links.
+This lets TCPM attach a sink when the supply stays on.
+---
+diff --git a/drivers/usb/typec/tcpm/fusb302.c b/drivers/usb/typec/tcpm/fusb302.c
+index 9685ced..d666b94 100644
+--- a/drivers/usb/typec/tcpm/fusb302.c
++++ b/drivers/usb/typec/tcpm/fusb302.c
+@@ -106,6 +106,7 @@ struct fusb302_chip {
+ 	/* port status */
+ 	bool vconn_on;
+ 	bool vbus_on;
++	bool always_on_vbus;
+ 	bool charge_on;
+ 	bool pd_rx_on;
+ 	bool vbus_present;
+@@ -503,7 +504,8 @@ static int tcpm_get_vbus(struct tcpc_dev *dev)
+ 	int ret = 0;
+ 
+ 	mutex_lock(&chip->lock);
+-	ret = chip->vbus_present ? 1 : 0;
++	ret = chip->vbus_present &&
++	      (!chip->always_on_vbus || chip->vbus_on);
+ 	mutex_unlock(&chip->lock);
+ 
+ 	return ret;
+@@ -850,6 +852,8 @@ static int tcpm_set_vbus(struct tcpc_dev *dev, bool on, bool charge)
+ 		}
+ 		chip->vbus_on = on;
+ 		fusb302_log(chip, "vbus := %s", str_on_off(on));
++		if (chip->always_on_vbus && chip->tcpm_port)
++			tcpm_vbus_change(chip->tcpm_port);
+ 	}
+ 	if (chip->charge_on == charge)
+ 		fusb302_log(chip, "charge is already %s", str_on_off(charge));
+@@ -1789,11 +1793,23 @@ static struct fwnode_handle *fusb302_fwnode_get(struct device *dev)
+ 	return fwnode;
+ }
+ 
++static void fusb302_unregister_port(struct fusb302_chip *chip)
++{
++	struct tcpm_port *port = chip->tcpm_port;
++
++	/* TCPM can call set_vbus after stopping its event worker. */
++	mutex_lock(&chip->lock);
++	chip->tcpm_port = NULL;
++	mutex_unlock(&chip->lock);
++	tcpm_unregister_port(port);
++}
++
+ static int fusb302_probe(struct i2c_client *client)
+ {
+ 	struct fusb302_chip *chip;
+ 	struct i2c_adapter *adapter = client->adapter;
+ 	struct auxiliary_device *bridge_dev;
++	struct tcpm_port *port;
+ 	struct device *dev = &client->dev;
+ 	const char *name;
+ 	int ret = 0;
+@@ -1824,6 +1840,9 @@ static int fusb302_probe(struct i2c_client *client)
+ 			return PTR_ERR(chip->extcon);
+ 	}
+ 
++	/* Permanent internal links can keep VBUS high during attach. */
++	chip->always_on_vbus = device_property_read_bool(dev, "fcs,always-on-vbus");
++
+ 	chip->vbus = devm_regulator_get(chip->dev, "vbus");
+ 	if (IS_ERR(chip->vbus))
+ 		return PTR_ERR(chip->vbus);
+@@ -1859,13 +1878,17 @@ static int fusb302_probe(struct i2c_client *client)
+ 		goto fwnode_put;
+ 	}
+ 
+-	chip->tcpm_port = tcpm_register_port(&client->dev, &chip->tcpc_dev);
+-	if (IS_ERR(chip->tcpm_port)) {
+-		ret = dev_err_probe(dev, PTR_ERR(chip->tcpm_port),
++	port = tcpm_register_port(&client->dev, &chip->tcpc_dev);
++	if (IS_ERR(port)) {
++		ret = dev_err_probe(dev, PTR_ERR(port),
+ 				    "cannot register tcpm port\n");
+ 		goto fwnode_put;
+ 	}
+ 
++	mutex_lock(&chip->lock);
++	chip->tcpm_port = port;
++	mutex_unlock(&chip->lock);
++
+ 	ret = devm_drm_dp_hpd_bridge_add(chip->dev, bridge_dev);
+ 	if (ret)
+ 		goto tcpm_unregister_port;
+@@ -1883,7 +1906,7 @@ static int fusb302_probe(struct i2c_client *client)
+ 	return 0;
+ 
+ tcpm_unregister_port:
+-	tcpm_unregister_port(chip->tcpm_port);
++	fusb302_unregister_port(chip);
+ fwnode_put:
+ 	fwnode_handle_put(chip->tcpc_dev.fwnode);
+ destroy_workqueue:
+@@ -1901,7 +1924,7 @@ static void fusb302_remove(struct i2c_client *client)
+ 	free_irq(chip->gpio_int_n_irq, chip);
+ 	cancel_work_sync(&chip->irq_work);
+ 	cancel_delayed_work_sync(&chip->bc_lvl_handler);
+-	tcpm_unregister_port(chip->tcpm_port);
++	fusb302_unregister_port(chip);
+ 	fwnode_handle_put(chip->tcpc_dev.fwnode);
+ 	destroy_workqueue(chip->wq);
+ 	fusb302_debugfs_exit(chip);

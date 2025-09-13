@@ -1,0 +1,64 @@
+Subject: media: i2c: tc358743: add TC358749 support
+
+Match the TC358749 chip ID and reuse the HDMI-to-CSI-2 path.
+---
+diff --git a/drivers/media/i2c/tc358743.c b/drivers/media/i2c/tc358743.c
+--- a/drivers/media/i2c/tc358743.c
++++ b/drivers/media/i2c/tc358743.c
+@@ -2168,10 +2168,23 @@
+ }
+ #endif
+ 
++struct tc358743_chip_info {
++	u16 chip_id;
++};
++
++static const struct tc358743_chip_info tc358743_chip = {
++	.chip_id = 0x0000,
++};
++
++static const struct tc358743_chip_info tc358749_chip = {
++	.chip_id = 0x4700,
++};
++
+ static int tc358743_probe(struct i2c_client *client)
+ {
+ 	static struct v4l2_dv_timings default_timing =
+ 		V4L2_DV_BT_CEA_640X480P59_94;
++	const struct tc358743_chip_info *chip = i2c_get_match_data(client);
+ 	struct tc358743_state *state;
+ 	struct tc358743_platform_data *pdata = client->dev.platform_data;
+ 	struct v4l2_subdev *sd;
+@@ -2207,13 +2220,15 @@
+ 	v4l2_i2c_subdev_init(sd, client, &tc358743_ops);
+ 	sd->flags |= V4L2_SUBDEV_FL_HAS_DEVNODE | V4L2_SUBDEV_FL_HAS_EVENTS;
+ 
+-	/* i2c access */
+-	if (i2c_rd16_err(sd, CHIPID, &chipid) ||
+-	    (chipid & MASK_CHIPID) != 0) {
+-		v4l2_info(sd, "not a TC358743 on address 0x%x\n",
+-			  client->addr << 1);
+-		return -ENODEV;
+-	}
++	if (!chip)
++		chip = &tc358743_chip;
++
++	if (i2c_rd16_err(sd, CHIPID, &chipid) ||
++	    (chipid & MASK_CHIPID) != chip->chip_id) {
++		v4l2_info(sd, "no matching chip on address 0x%x\n",
++			  client->addr << 1);
++		return -ENODEV;
++	}
+ 
+ 	/* control handlers */
+ 	v4l2_ctrl_handler_init(&state->hdl, 3);
+@@ -2363,3 +2378,4 @@ static const struct i2c_device_id tc358743_id[] = {
++	{ .name = "tc358749", .driver_data = (kernel_ulong_t)&tc358749_chip },
+ 	{ }
+ };
+ 
+@@ -2371,3 +2387,4 @@ static const struct of_device_id tc358743_of_match[] = {
++	{ .compatible = "toshiba,tc358749", .data = &tc358749_chip },
+ 	{},
+ };
+ MODULE_DEVICE_TABLE(of, tc358743_of_match);

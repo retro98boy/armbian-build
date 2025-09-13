@@ -1,0 +1,347 @@
+Subject: media: i2c: tc358743: add TC358749 I2S capture
+
+Register an optional capture DAI for TC358749. Enable the I2S output
+when ALSA opens capture. Keep the audio buffer enabled during capture
+when the video stream stops. Stop polling or IRQ handling before
+releasing resources on probe failure or removal.
+---
+diff --git a/drivers/media/i2c/tc358743.c b/drivers/media/i2c/tc358743.c
+index 2858192..0aaf31e 100644
+--- a/drivers/media/i2c/tc358743.c
++++ b/drivers/media/i2c/tc358743.c
+@@ -22,6 +22,7 @@
+ #include <linux/interrupt.h>
+ #include <linux/timer.h>
+ #include <linux/of_graph.h>
++#include <linux/property.h>
+ #include <linux/videodev2.h>
+ #include <linux/workqueue.h>
+ #include <linux/v4l2-dv-timings.h>
+@@ -34,6 +35,9 @@
+ #include <media/v4l2-fwnode.h>
+ #include <media/i2c/tc358743.h>
+ 
++#include <sound/pcm_params.h>
++#include <sound/soc.h>
++
+ #include "tc358743_regs.h"
+ 
+ static int debug;
+@@ -90,6 +94,8 @@ struct tc358743_state {
+ 	struct i2c_client *i2c_client;
+ 	/* CONFCTL is modified in ops and tc358743_hdmi_sys_int_handler */
+ 	struct mutex confctl_mutex;
++	bool audio_registered;
++	bool audio_active;
+ 
+ 	/* controls */
+ 	struct v4l2_ctrl *detect_tx_5v_ctrl;
+@@ -157,7 +163,7 @@ static int i2c_rd(struct v4l2_subdev *sd, u16 reg, u8 *values, u32 n)
+ 	return err != ARRAY_SIZE(msgs);
+ }
+ 
+-static void i2c_wr(struct v4l2_subdev *sd, u16 reg, u8 *values, u32 n)
++static int i2c_wr(struct v4l2_subdev *sd, u16 reg, u8 *values, u32 n)
+ {
+ 	struct tc358743_state *state = to_state(sd);
+ 	struct i2c_client *client = state->i2c_client;
+@@ -186,11 +192,11 @@ static void i2c_wr(struct v4l2_subdev *sd, u16 reg, u8 *values, u32 n)
+ 	if (err != 1) {
+ 		v4l2_err(sd, "%s: writing register 0x%x from 0x%x failed: %d\n",
+ 				__func__, reg, client->addr, err);
+-		return;
++		return err < 0 ? err : -EIO;
+ 	}
+ 
+ 	if (debug < 3)
+-		return;
++		return 0;
+ 
+ 	switch (n) {
+ 	case 1:
+@@ -209,6 +215,8 @@ static void i2c_wr(struct v4l2_subdev *sd, u16 reg, u8 *values, u32 n)
+ 		v4l2_info(sd, "I2C write %d bytes from address 0x%04x\n",
+ 				n, reg);
+ 	}
++
++	return 0;
+ }
+ 
+ static noinline u32 i2c_rdreg_err(struct v4l2_subdev *sd, u16 reg, u32 n,
+@@ -229,11 +237,11 @@ static inline u32 i2c_rdreg(struct v4l2_subdev *sd, u16 reg, u32 n)
+ 	return i2c_rdreg_err(sd, reg, n, NULL);
+ }
+ 
+-static noinline void i2c_wrreg(struct v4l2_subdev *sd, u16 reg, u32 val, u32 n)
++static noinline int i2c_wrreg(struct v4l2_subdev *sd, u16 reg, u32 val, u32 n)
+ {
+ 	__le32 raw = cpu_to_le32(val);
+ 
+-	i2c_wr(sd, reg, (u8 __force *)&raw, n);
++	return i2c_wr(sd, reg, (u8 __force *)&raw, n);
+ }
+ 
+ static u8 i2c_rd8(struct v4l2_subdev *sd, u16 reg)
+@@ -269,9 +277,16 @@ static void i2c_wr16(struct v4l2_subdev *sd, u16 reg, u16 val)
+ 	i2c_wrreg(sd, reg, val, 2);
+ }
+ 
+-static void i2c_wr16_and_or(struct v4l2_subdev *sd, u16 reg, u16 mask, u16 val)
++static int i2c_wr16_and_or(struct v4l2_subdev *sd, u16 reg, u16 mask, u16 val)
+ {
+-	i2c_wrreg(sd, reg, (i2c_rdreg(sd, reg, 2) & mask) | val, 2);
++	u16 old;
++	int ret;
++
++	ret = i2c_rd16_err(sd, reg, &old);
++	if (ret)
++		return -EIO;
++
++	return i2c_wrreg(sd, reg, (old & mask) | val, 2);
+ }
+ 
+ static u32 i2c_rd32(struct v4l2_subdev *sd, u16 reg)
+@@ -325,6 +340,95 @@ static int get_audio_sampling_rate(struct v4l2_subdev *sd)
+ 	return code_to_rate[i2c_rd8(sd, FS_SET) & MASK_FS];
+ }
+ 
++/* --------------- ASoC capture --------------- */
++
++static int tc358749_audio_set_fmt(struct snd_soc_dai *dai, unsigned int fmt)
++{
++	unsigned int mask = SND_SOC_DAIFMT_FORMAT_MASK | SND_SOC_DAIFMT_INV_MASK |
++			    SND_SOC_DAIFMT_CLOCK_PROVIDER_MASK;
++	unsigned int i2s = SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF |
++			   SND_SOC_DAIFMT_CBP_CFP;
++
++	return (fmt & mask) == i2s ? 0 : -EINVAL;
++}
++
++static int tc358749_audio_startup(struct snd_pcm_substream *substream,
++				   struct snd_soc_dai *dai)
++{
++	struct v4l2_subdev *sd = snd_soc_dai_get_drvdata(dai);
++	struct tc358743_state *state = to_state(sd);
++	int ret;
++
++	mutex_lock(&state->confctl_mutex);
++	ret = i2c_wr16_and_or(sd, SYSCTL, ~MASK_TC358749_I2S_DIS, 0);
++	if (ret)
++		goto unlock;
++
++	ret = i2c_wr16_and_or(sd, CONFCTL, ~MASK_ABUFEN, MASK_ABUFEN);
++	if (ret) {
++		i2c_wr16_and_or(sd, SYSCTL, 0xffff, MASK_TC358749_I2S_DIS);
++		goto unlock;
++	}
++
++	state->audio_active = true;
++
++unlock:
++	mutex_unlock(&state->confctl_mutex);
++	return ret;
++}
++
++static void tc358749_audio_shutdown(struct snd_pcm_substream *substream,
++				     struct snd_soc_dai *dai)
++{
++	struct v4l2_subdev *sd = snd_soc_dai_get_drvdata(dai);
++	struct tc358743_state *state = to_state(sd);
++	u16 confctl;
++
++	mutex_lock(&state->confctl_mutex);
++	state->audio_active = false;
++	i2c_wr16_and_or(sd, SYSCTL, 0xffff, MASK_TC358749_I2S_DIS);
++	if (!i2c_rd16_err(sd, CONFCTL, &confctl) && !(confctl & MASK_VBUFEN))
++		i2c_wr16(sd, CONFCTL, confctl & ~MASK_ABUFEN);
++	mutex_unlock(&state->confctl_mutex);
++}
++
++static int tc358749_audio_hw_params(struct snd_pcm_substream *substream,
++				      struct snd_pcm_hw_params *params,
++				      struct snd_soc_dai *dai)
++{
++	struct v4l2_subdev *sd = snd_soc_dai_get_drvdata(dai);
++	unsigned int rate = get_audio_sampling_rate(sd);
++
++	if (audio_present(sd) && rate && params_rate(params) != rate)
++		return -EINVAL;
++
++	return 0;
++}
++
++static const struct snd_soc_dai_ops tc358749_audio_ops = {
++	.set_fmt = tc358749_audio_set_fmt,
++	.startup = tc358749_audio_startup,
++	.shutdown = tc358749_audio_shutdown,
++	.hw_params = tc358749_audio_hw_params,
++};
++
++static struct snd_soc_dai_driver tc358749_audio_dai = {
++	.name = "tc358749-i2s",
++	.capture = {
++		.stream_name = "Capture",
++		.channels_min = 2,
++		.channels_max = 2,
++		.rates = SNDRV_PCM_RATE_32000 | SNDRV_PCM_RATE_44100 |
++			 SNDRV_PCM_RATE_48000,
++		.formats = SNDRV_PCM_FMTBIT_S16_LE,
++	},
++	.ops = &tc358749_audio_ops,
++};
++
++static const struct snd_soc_component_driver tc358749_audio_component = {
++	.name = "tc358749-audio",
++};
++
+ /* --------------- TIMINGS --------------- */
+ 
+ static inline unsigned fps(const struct v4l2_bt_timings *t)
+@@ -661,7 +765,8 @@ static inline void enable_stream(struct v4l2_subdev *sd, bool enable)
+ 
+ 	mutex_lock(&state->confctl_mutex);
+ 	i2c_wr16_and_or(sd, CONFCTL, ~(MASK_VBUFEN | MASK_ABUFEN),
+-			enable ? (MASK_VBUFEN | MASK_ABUFEN) : 0x0);
++			(enable ? MASK_VBUFEN : 0) |
++			(enable || state->audio_active ? MASK_ABUFEN : 0));
+ 	mutex_unlock(&state->confctl_mutex);
+ }
+ 
+@@ -1620,6 +1725,18 @@ static void tc358743_work_i2c_poll(struct work_struct *work)
+ 	tc358743_isr(&state->sd, 0, &handled);
+ }
+ 
++static void tc358743_stop_irq_poll(struct tc358743_state *state)
++{
++	struct i2c_client *client = state->i2c_client;
++
++	if (client->irq) {
++		devm_free_irq(&client->dev, client->irq, state);
++	} else {
++		timer_shutdown_sync(&state->timer);
++		cancel_work_sync(&state->work_i2c_poll);
++	}
++}
++
+ static int tc358743_subscribe_event(struct v4l2_subdev *sd, struct v4l2_fh *fh,
+ 				    struct v4l2_event_subscription *sub)
+ {
+@@ -2172,6 +2289,7 @@ static inline int tc358743_probe_of(struct tc358743_state *state)
+ 
+ struct tc358743_chip_info {
+ 	u16 chip_id;
++	bool has_i2s_capture;
+ };
+ 
+ static const struct tc358743_chip_info tc358743_chip = {
+@@ -2180,6 +2298,7 @@ static const struct tc358743_chip_info tc358743_chip = {
+ 
+ static const struct tc358743_chip_info tc358749_chip = {
+ 	.chip_id = 0x4700,
++	.has_i2s_capture = true,
+ };
+ 
+ static int tc358743_probe(struct i2c_client *client)
+@@ -2290,6 +2409,12 @@ static int tc358743_probe(struct i2c_client *client)
+ 
+ 	tc358743_init_interrupts(sd);
+ 
++	err = cec_register_adapter(state->cec_adap, &client->dev);
++	if (err) {
++		cec_delete_adapter(state->cec_adap);
++		goto err_hotplug;
++	}
++
+ 	if (state->i2c_client->irq) {
+ 		err = devm_request_threaded_irq(&client->dev,
+ 						state->i2c_client->irq,
+@@ -2297,7 +2422,7 @@ static int tc358743_probe(struct i2c_client *client)
+ 						IRQF_TRIGGER_HIGH | IRQF_ONESHOT,
+ 						"tc358743", state);
+ 		if (err)
+-			goto err_work_queues;
++			goto err_cec;
+ 	} else {
+ 		INIT_WORK(&state->work_i2c_poll,
+ 			  tc358743_work_i2c_poll);
+@@ -2307,14 +2432,6 @@ static int tc358743_probe(struct i2c_client *client)
+ 		add_timer(&state->timer);
+ 	}
+ 
+-	err = cec_register_adapter(state->cec_adap, &client->dev);
+-	if (err < 0) {
+-		pr_err("%s: failed to register the cec device\n", __func__);
+-		cec_delete_adapter(state->cec_adap);
+-		state->cec_adap = NULL;
+-		goto err_work_queues;
+-	}
+-
+ 	tc358743_enable_interrupts(sd, tx_5v_power_present(sd));
+ 	i2c_wr16(sd, INTMASK, ~irq_mask);
+ 
+@@ -2326,6 +2443,17 @@ static int tc358743_probe(struct i2c_client *client)
+ 	if (err < 0)
+ 		goto err_work_queues;
+ 
++	if (IS_REACHABLE(CONFIG_SND_SOC) && chip->has_i2s_capture &&
++	    device_property_present(&client->dev, "#sound-dai-cells")) {
++		err = snd_soc_register_component(&client->dev,
++						 &tc358749_audio_component,
++						 &tc358749_audio_dai, 1);
++		if (err)
++			goto err_subdev;
++
++		state->audio_registered = true;
++	}
++
+ 	i2c_wr8(sd, TYP_ACP_SET, packet_type);
+ 	i2c_wr8(sd, PK_AUTO_CLR, 0xff);
+ 	i2c_wr8(sd, NO_PKT_CLR, MASK_NO_ACP_CLR);
+@@ -2341,12 +2469,15 @@ static int tc358743_probe(struct i2c_client *client)
+ 
+ 	return 0;
+ 
++err_subdev:
++	tc358743_stop_irq_poll(state);
++	v4l2_async_unregister_subdev(sd);
++	goto err_cec;
+ err_work_queues:
++	tc358743_stop_irq_poll(state);
++err_cec:
+ 	cec_unregister_adapter(state->cec_adap);
+-	if (!state->i2c_client->irq) {
+-		timer_delete_sync(&state->timer);
+-		flush_work(&state->work_i2c_poll);
+-	}
++err_hotplug:
+ 	cancel_delayed_work_sync(&state->delayed_work_enable_hotplug);
+ 	mutex_destroy(&state->confctl_mutex);
+ err_hdl:
+@@ -2360,10 +2491,11 @@ static void tc358743_remove(struct i2c_client *client)
+ 	struct v4l2_subdev *sd = i2c_get_clientdata(client);
+ 	struct tc358743_state *state = to_state(sd);
+ 
+-	if (!state->i2c_client->irq) {
+-		timer_delete_sync(&state->timer);
+-		flush_work(&state->work_i2c_poll);
+-	}
++	if (IS_REACHABLE(CONFIG_SND_SOC) && state->audio_registered)
++		snd_soc_unregister_component_by_driver(&client->dev,
++						       &tc358749_audio_component);
++
++	tc358743_stop_irq_poll(state);
+ 	cancel_delayed_work_sync(&state->delayed_work_enable_hotplug);
+ 	v4l2_debugfs_if_free(state->infoframes);
+ 	debugfs_remove_recursive(state->debugfs_dir);
+diff --git a/drivers/media/i2c/tc358743_regs.h b/drivers/media/i2c/tc358743_regs.h
+index aae288f..a2ea73c 100644
+--- a/drivers/media/i2c/tc358743_regs.h
++++ b/drivers/media/i2c/tc358743_regs.h
+@@ -21,6 +21,7 @@
+ #define MASK_REVID                            0x00ff
+ 
+ #define SYSCTL                                0x0002
++#define MASK_TC358749_I2S_DIS                 0x0080
+ #define MASK_IRRST                            0x0800
+ #define MASK_CECRST                           0x0400
+ #define MASK_CTXRST                           0x0200

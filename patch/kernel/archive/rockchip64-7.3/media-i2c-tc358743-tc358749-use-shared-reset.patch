@@ -1,0 +1,149 @@
+Subject: media: i2c: tc358743: share the TC358749 reset line
+
+Keep both bridges out of reset while either bridge is bound.
+---
+diff --git a/drivers/media/i2c/tc358743.c b/drivers/media/i2c/tc358743.c
+index 0aaf31e..7b91100 100644
+--- a/drivers/media/i2c/tc358743.c
++++ b/drivers/media/i2c/tc358743.c
+@@ -23,6 +23,7 @@
+ #include <linux/timer.h>
+ #include <linux/of_graph.h>
+ #include <linux/property.h>
++#include <linux/reset.h>
+ #include <linux/videodev2.h>
+ #include <linux/workqueue.h>
+ #include <linux/v4l2-dv-timings.h>
+@@ -118,7 +119,6 @@ struct tc358743_state {
+ 	u32 mbus_fmt_code;
+ 	u8 csi_lanes_in_use;
+ 
+-	struct gpio_desc *reset_gpio;
+ 
+ 	struct cec_adapter *cec_adap;
+ };
+@@ -2115,29 +2115,31 @@ static const struct v4l2_ctrl_config tc358743_ctrl_audio_present = {
+ /* --------------- PROBE / REMOVE --------------- */
+ 
+ #ifdef CONFIG_OF
+-static void tc358743_gpio_reset(struct tc358743_state *state)
++static void tc358743_gpio_reset(struct gpio_desc *reset_gpio)
+ {
+ 	usleep_range(5000, 10000);
+-	gpiod_set_value(state->reset_gpio, 1);
++	gpiod_set_value_cansleep(reset_gpio, 1);
+ 	usleep_range(1000, 2000);
+-	gpiod_set_value(state->reset_gpio, 0);
++	gpiod_set_value_cansleep(reset_gpio, 0);
+ 	msleep(20);
+ }
+ 
++static void tc358743_assert_reset(void *data)
++{
++	reset_control_assert(data);
++}
++
+ static int tc358743_probe_of(struct tc358743_state *state)
+ {
+ 	struct device *dev = &state->i2c_client->dev;
+ 	struct v4l2_fwnode_endpoint endpoint = { .bus_type = 0 };
+ 	struct device_node *ep;
++	struct reset_control *reset;
++	struct gpio_desc *reset_gpio;
+ 	struct clk *refclk;
+ 	u32 bps_pr_lane;
+ 	int ret;
+ 
+-	refclk = devm_clk_get(dev, "refclk");
+-	if (IS_ERR(refclk))
+-		return dev_err_probe(dev, PTR_ERR(refclk),
+-				     "failed to get refclk\n");
+-
+ 	ep = of_graph_get_endpoint_by_regs(dev->of_node, 0, -1);
+ 	if (!ep) {
+ 		dev_err(dev, "missing endpoint node\n");
+@@ -2166,9 +2168,10 @@ static int tc358743_probe_of(struct tc358743_state *state)
+ 
+ 	state->bus = endpoint.bus.mipi_csi2;
+ 
+-	ret = clk_prepare_enable(refclk);
+-	if (ret) {
+-		dev_err(dev, "Failed! to enable clock\n");
++	refclk = devm_clk_get_enabled(dev, "refclk");
++	if (IS_ERR(refclk)) {
++		ret = dev_err_probe(dev, PTR_ERR(refclk),
++				    "failed to enable refclk\n");
+ 		goto free_endpoint;
+ 	}
+ 
+@@ -2201,7 +2204,7 @@ static int tc358743_probe_of(struct tc358743_state *state)
+ 	default:
+ 		dev_err(dev, "unsupported refclk rate: %u Hz\n",
+ 			state->pdata.refclk_hz);
+-		goto disable_clk;
++		goto free_endpoint;
+ 	}
+ 
+ 	/*
+@@ -2213,7 +2216,7 @@ static int tc358743_probe_of(struct tc358743_state *state)
+ 	if (bps_pr_lane < 62500000U || bps_pr_lane > 1000000000U) {
+ 		dev_err(dev, "unsupported bps per lane: %u bps\n", bps_pr_lane);
+ 		ret = -EINVAL;
+-		goto disable_clk;
++		goto free_endpoint;
+ 	}
+ 
+ 	/* The CSI speed per lane is refclk / pll_prd * pll_fbd */
+@@ -2258,22 +2261,41 @@ static int tc358743_probe_of(struct tc358743_state *state)
+ 		break;
+ 	}
+ 
+-	state->reset_gpio = devm_gpiod_get_optional(dev, "reset",
+-						    GPIOD_OUT_LOW);
+-	if (IS_ERR(state->reset_gpio)) {
+-		dev_err(dev, "failed to get reset gpio\n");
+-		ret = PTR_ERR(state->reset_gpio);
+-		goto disable_clk;
++	if (of_device_is_compatible(dev->of_node, "toshiba,tc358749")) {
++		reset = devm_reset_control_get_optional_shared(dev, NULL);
++		if (IS_ERR(reset)) {
++			ret = dev_err_probe(dev, PTR_ERR(reset),
++					    "failed to get shared reset\n");
++			goto free_endpoint;
++		}
++
++		if (reset) {
++			/* The GPIO reset controller starts with reset asserted. */
++			usleep_range(1000, 2000);
++			ret = reset_control_deassert(reset);
++			if (ret)
++				goto free_endpoint;
++
++			ret = devm_add_action_or_reset(dev, tc358743_assert_reset,
++						       reset);
++			if (!ret)
++				msleep(20);
++			goto free_endpoint;
++		}
++	}
++
++	reset_gpio = devm_gpiod_get_optional(dev, "reset", GPIOD_OUT_LOW);
++	if (IS_ERR(reset_gpio)) {
++		ret = dev_err_probe(dev, PTR_ERR(reset_gpio),
++				    "failed to get reset GPIO\n");
++		goto free_endpoint;
+ 	}
+ 
+-	if (state->reset_gpio)
+-		tc358743_gpio_reset(state);
++	if (reset_gpio)
++		tc358743_gpio_reset(reset_gpio);
+ 
+ 	ret = 0;
+-	goto free_endpoint;
+ 
+-disable_clk:
+-	clk_disable_unprepare(refclk);
+ free_endpoint:
+ 	v4l2_fwnode_endpoint_free(&endpoint);
+ put_node:

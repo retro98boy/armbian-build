@@ -1,0 +1,18 @@
+Subject: media: i2c: tc358743: report the CSI-2 link frequency
+
+Expose the transmitter PLL rate to the CSI-2 receiver.
+---
+diff --git a/drivers/media/i2c/tc358743.c b/drivers/media/i2c/tc358743.c
+--- a/drivers/media/i2c/tc358743.c
++++ b/drivers/media/i2c/tc358743.c
+@@ -1745,8 +1745,10 @@
+ 				    struct v4l2_mbus_config *cfg)
+ {
+ 	struct tc358743_state *state = to_state(sd);
++	const struct tc358743_platform_data *pdata = &state->pdata;
+ 
+ 	cfg->type = V4L2_MBUS_CSI2_DPHY;
++	cfg->link_freq = (pdata->refclk_hz / pdata->pll_prd) * pdata->pll_fbd / 2;
+ 
+ 	/* Support for non-continuous CSI-2 clock is missing in the driver */
+ 	cfg->bus.mipi_csi2.flags = 0;
