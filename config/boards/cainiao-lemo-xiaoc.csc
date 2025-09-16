@@ -20,26 +20,8 @@ function post_family_config__use_repacked_fip() {
 	unset write_uboot_platform
 
 	function write_uboot_platform() {
-		dd if="$1/u-boot.bin" of="$2" bs=512 seek=1 conv=fsync 2>&1
+		dd if="$1/u-boot.bin" of="$2" bs=512 seek=1 conv=fsync,notrunc 2>&1
 	}
-}
-
-function fetch_sources_tools__get_vendor_fip_and_gxlimg_source() {
-	fetch_from_repo "https://github.com/retro98boy/amlogic-fip-blobs.git" "amlogic-fip-blobs" "branch:main"
-	fetch_from_repo "https://github.com/repk/gxlimg.git" "gxlimg" "commit:0d0e5ba9cf396d1338067e8dc37a8bcd2e6874f1"
-}
-
-function build_host_tools__install_gxlimg() {
-	# Compile and install only if git commit hash changed
-	cd "${SRC}/cache/sources/gxlimg" || exit
-	# need to check if /usr/local/bin/gxlimg to detect new Docker containers with old cached sources
-	if [[ ! -f .commit_id || $(git rev-parse @ 2> /dev/null) != $(< .commit_id) || ! -f /usr/local/bin/gxlimg ]]; then
-		display_alert "Compiling" "gxlimg" "info"
-		run_host_command_logged make distclean
-		run_host_command_logged make
-		install -Dm0755 gxlimg /usr/local/bin/gxlimg
-		git rev-parse @ 2> /dev/null > .commit_id
-	fi
 }
 
 function post_uboot_custom_postprocess__repack_vendor_fip_with_mainline_uboot() {
@@ -47,23 +29,19 @@ function post_uboot_custom_postprocess__repack_vendor_fip_with_mainline_uboot() 
 
 	BLOBS_DIR="${SRC}/cache/sources/amlogic-fip-blobs/cainiao-lemo-xiaoc"
 	EXTRACT_DIR="${BLOBS_DIR}/extract"
-	AML_ENCRYPT="${SRC}/cache/sources/amlogic-boot-fip/khadas-vim3/aml_encrypt_g12b"
 
-	if [ ! -f "$AML_ENCRYPT" ]; then
-		display_alert "${BOARD}" "amlogic-boot-fip/khadas-vim3/aml_encrypt_g12b not exist" "err"
-		exit 1
-	fi
+	rm -rf "$EXTRACT_DIR"
+	mkdir "$EXTRACT_DIR"
+	run_host_command_logged dd if="${BLOBS_DIR}/mmcblk0boot0" of="${EXTRACT_DIR}/fip" \
+		bs=512 skip=1 conv=fsync,notrunc
+	run_host_command_logged gxlimg -e "${EXTRACT_DIR}/fip" "$EXTRACT_DIR"
 
 	mv u-boot.bin raw-u-boot.bin
 	rm -f "${EXTRACT_DIR}/bl33.enc"
-	# The current version of gxlimg has a problem with the handling of bl3x,
-	# which may cause the produced fip to fail to boot.
-	# see https://github.com/repk/gxlimg/issues/19
-	# run_host_command_logged gxlimg -t bl3x -s raw-u-boot.bin "${EXTRACT_DIR}/bl33.enc"
-	run_host_x86_binary_logged "$AML_ENCRYPT" --bl3sig \
-		--input raw-u-boot.bin \
-		--output "${EXTRACT_DIR}/bl33.enc" \
-		--level v3 --type bl33
+	run_host_command_logged gxlimg \
+		-t bl3x \
+		-s raw-u-boot.bin \
+		"${EXTRACT_DIR}/bl33.enc"
 	run_host_command_logged gxlimg \
 		-t fip \
 		--bl2 "${EXTRACT_DIR}/bl2.sign" \
