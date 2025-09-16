@@ -94,10 +94,10 @@ index 00000000..25519ae1
 +CONFIG_ERRNO_STR=y
 diff --git a/dts/upstream/src/arm64/rockchip/rk3399-tn3399-v3.dts b/dts/upstream/src/arm64/rockchip/rk3399-tn3399-v3.dts
 new file mode 100644
-index 00000000..2353c4cc
+index 00000000..aa018344
 --- /dev/null
 +++ b/dts/upstream/src/arm64/rockchip/rk3399-tn3399-v3.dts
-@@ -0,0 +1,880 @@
+@@ -0,0 +1,888 @@
 +// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
 +/*
 + * Copyright (c) 2017 Fuzhou Rockchip Electronics Co., Ltd.
@@ -404,7 +404,7 @@ index 00000000..2353c4cc
 +		#address-cells = <1>;
 +		#size-cells = <0>;
 +
-+		rtl8211e: ethernet-phy@0 {
++		rtl8211e: rtl8211e@0 {
 +			reg = <0>;
 +			reset-assert-us = <10000>;
 +			reset-deassert-us = <30000>;
@@ -893,6 +893,10 @@ index 00000000..2353c4cc
 +&u2phy0 {
 +	status = "okay";
 +
++	u2phy0_otg: otg-port {
++		status = "okay";
++	};
++
 +	u2phy0_host: host-port {
 +		phy-supply = <&usb_vbus>;
 +		status = "okay";
@@ -901,6 +905,10 @@ index 00000000..2353c4cc
 +
 +&u2phy1 {
 +	status = "okay";
++
++	u2phy1_otg: otg-port {
++		status = "okay";
++	};
 +
 +	u2phy1_host: host-port {
 +		phy-supply = <&usb_vbus>;
