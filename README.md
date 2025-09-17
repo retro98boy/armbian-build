@@ -1,14 +1,14 @@
 # 自用设备支持状态
 
-| 设备                       | 源码状态    | 持有状态    | 启动类型                                |
-|---------------------------|------------|------------|---------------------------------------|
-| CAINIAO CNIoT-CORE        | 已提交上游   | 持有        | mainline U-Boot                      |
-| CAINIAO LEMO XIAOC        | 本仓库      | 持有        | mainline U-Boot                       |
-| OneThing Cloud OES        | 本仓库      | 不再持有      | onboard vendor U-Boot (secure boot)   |
-| OneThing Cloud OES Plus   | 本仓库      | 持有        | onboard vendor U-Boot (secure boot)   |
-| SMART AM40                | 已提交上游   | 持有        | mainline U-Boot                       |
-| TIANNUO TN3399_V3         | 本仓库      | 不再持有      | mainline U-Boot                       |
-| CoreLab A311D2-TVPro      | 本仓库      | 持有         | compile from retro98boy/khadas-u-boot |
+| 设备                       | 源码状态    | 持有状态    | 启动类型                                   |
+|---------------------------|------------|------------|-------------------------------------------|
+| CAINIAO CNIoT-CORE        | 已提交上游   | 持有        | mainline U-Boot                          |
+| CAINIAO LEMO XIAOC        | 本仓库      | 持有        | mainline U-Boot                          |
+| OneThing Cloud OES        | 本仓库      | 不再持有      | onboard vendor U-Boot (secure boot)     |
+| OneThing Cloud OES Plus   | 本仓库      | 持有        | onboard vendor U-Boot (secure boot)      |
+| SMART AM40                | 已提交上游   | 持有        | mainline U-Boot                          |
+| TIANNUO TN3399_V3         | 本仓库      | 不再持有      | mainline U-Boot                         |
+| CoreLab A311D2-TVPro      | 本仓库      | 持有         | compile from retro98boy/coreelec-u-boot |
 
 # 下载
 
