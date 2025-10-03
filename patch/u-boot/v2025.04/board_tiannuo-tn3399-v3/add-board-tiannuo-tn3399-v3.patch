@@ -94,7 +94,7 @@ index 00000000..25519ae1
 +CONFIG_ERRNO_STR=y
 diff --git a/dts/upstream/src/arm64/rockchip/rk3399-tn3399-v3.dts b/dts/upstream/src/arm64/rockchip/rk3399-tn3399-v3.dts
 new file mode 100644
-index 00000000..aa018344
+index 00000000..f4c73069
 --- /dev/null
 +++ b/dts/upstream/src/arm64/rockchip/rk3399-tn3399-v3.dts
 @@ -0,0 +1,888 @@
@@ -212,7 +212,7 @@ index 00000000..aa018344
 +	sdio_pwrseq: sdio-pwrseq {
 +		compatible = "mmc-pwrseq-simple";
 +		clocks = <&rk808 1>;
-+		clock-names = "lpo";
++		clock-names = "ext_clock";
 +		pinctrl-names = "default";
 +		pinctrl-0 = <&wifi_enable_h>;
 +		reset-gpios = <&gpio0 RK_PB2 GPIO_ACTIVE_LOW>;
@@ -786,7 +786,7 @@ index 00000000..aa018344
 +		};
 +	};
 +
-+	usb2 {
++	usb {
 +		vcc5v0_typec0_en: vcc5v0-typec0-en {
 +			rockchip,pins = <0 RK_PA5 RK_FUNC_GPIO &pcfg_pull_none>;
 +		};
@@ -848,7 +848,7 @@ index 00000000..aa018344
 +		compatible = "brcm,bcm43455-fmac";
 +		reg = <1>;
 +		interrupt-parent = <&gpio0>;
-+		interrupts = <RK_PA3 GPIO_ACTIVE_HIGH>;
++		interrupts = <RK_PA3 IRQ_TYPE_LEVEL_HIGH>;
 +		interrupt-names = "host-wake";
 +		pinctrl-names = "default";
 +		pinctrl-0 = <&wifi_host_wake_l>;
