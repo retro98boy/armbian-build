@@ -6,6 +6,7 @@ dtbo-$(CONFIG_ARCH_ROCKCHIP) += \
 	rk3308-b@1.3ghz.dtbo \
 	rk3308-bs.dtbo rk3308-bs@1.3ghz.dtbo \
 	rk3308-pcm5102a.dtbo \
+	rockchip-dusun-010r-rp3328b.dtbo \
 	rockchip-sakurapi-rk3308b-ws2812.dtbo \
 	rockchip-rockpi4cplus-usb-host.dtbo \
 	rockchip-rockpro64-lcd.dtbo \
@@ -52,6 +53,7 @@ dtbo-$(CONFIG_ARCH_ROCKCHIP) += \
 	rockchip-rk3568-hk-uart1.dtbo \
 	rockchip-rk3568-rock-3a-disable-uart2.dtbo \
 	rockchip-rk3588-fanctrl.dtbo \
+	rockchip-rk3588-sata0.dtbo \
 	rockchip-rk3588-sata1.dtbo \
 	rockchip-rk3588-sata2.dtbo \
 	rockchip-rk3588-hdmirx.dtbo \
