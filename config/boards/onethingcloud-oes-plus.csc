@@ -1,7 +1,7 @@
 # Amlogic A311D 4GB RAM 8GB eMMC GBE USB 2.0 PCIe ASM1064
 BOARD_NAME="OneThing Cloud OES Plus"
 BOARDFAMILY="meson-g12b"
-BOARD_MAINTAINER=""
+BOARD_MAINTAINER="retro98boy"
 OFFSET="100" # Reserved for the EPT and vendor U-Boot env
 BOOTSIZE="256"
 BOOTFS_TYPE="fat"
