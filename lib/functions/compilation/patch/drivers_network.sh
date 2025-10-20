@@ -34,6 +34,16 @@ function driver_generic_bring_back_ipx() {
 	fi
 }
 
+driver_wifi_injection() {
+	# - Apply driver-level fixes for monitor/injection path for 6.12 series
+	# - Add compatibility shims for cfg80211/mac80211 where API changed in 6.12
+	# - Add Kconfig option and module parameter notes for enabling injection
+	if linux-version compare "${version}" ge 6.12; then
+                display_alert "Adding" "Enables Wi-Fi packet injection and monitor-mode tweaks" "info"
+                process_patch_file "${SRC}/patch/misc/wireless-injection-6.12.patch" "applying"
+	fi
+}
+
 driver_rtl8189ES() {
 
 	# Wireless drivers for Realtek 8189ES chipsets
@@ -362,13 +372,11 @@ driver_rtw88() {
 }
 
 driver_rtl8852bs() {
-
 	# Wireless driver for Realtek 8852BS SDIO Wireless driver used in BananaPi F3 and Armsom Sige5
-
 	if linux-version compare "${version}" ge 6.1 && [[ "${LINUXFAMILY}" == spacemit || "${LINUXFAMILY}" == rk35xx || "${LINUXFAMILY}" == rockchip64 ]]; then
 
 		# Attach to specific commit
-		local rtl8852bs_ver='commit:15811ffdf575baabbd1cd46a306e9544a7f02846' # Commit date: Oct 2, 2025 (please update when updating commit ref)
+		local rtl8852bs_ver='commit:72c75150d7422eda3f0b3f543cce65114efcb4fe' # Commit date: Oct 18, 2025 (please update when updating commit ref)
 
 		display_alert "Adding" "Wireless drivers for Realtek 8852BS SDIO chipset ${rtl8852bs_ver}" "info"
 
@@ -432,7 +440,7 @@ driver_rtl88x2cs() {
 	if linux-version compare "${version}" ge 5.9 && [[ "$LINUXFAMILY" == meson64 ]]; then
 
 		# Attach to specific commit (track branch:tune_for_jethub)
-		local rtl88x2csver='commit:79884dd23267e6e9ec29546476d8f68a1442d180' # Commit date: Oct 09, 2025 (please update when updating commit ref)
+		local rtl88x2csver='commit:39f72eab042da8d74a2c9753cb5865caf103d93c' # Commit date: Oct 13, 2025 (please update when updating commit ref)
 
 		display_alert "Adding" "Wireless drivers for Realtek 88x2cs chipsets ${rtl88x2csver}" "info"
 
@@ -660,7 +668,7 @@ driver_rtl8723DS() {
 	if linux-version compare "${version}" ge 5.0; then
 
 		# Attach to specific commit (was "branch:master")
-		local rtl8723dsver='commit:39d0eedf4eaedfcf6e133413a389c5f8a70a7d1f' # Commit date: 2025-10-02 (please update when updating commit ref)
+		local rtl8723dsver='commit:8e1aa4d865e6f8709fd07cceb20b5c6eb993875b' # Commit date: 2025-10-18 (please update when updating commit ref)
 
 		display_alert "Adding" "Wireless drivers for Realtek 8723DS chipsets ${rtl8723dsver}" "info"
 
