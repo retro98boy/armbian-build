@@ -22,6 +22,12 @@
 
 本仓库维护的设备不在Armbian/Ubuntu存储库中，所以需要去本仓库发布界面下载最新deb手动安装，包括内核和每个设备的私有deb
 
+# 源码对比
+
+[retro98boy/armbian-build:main <- armbian/build:main](https://github.com/retro98boy/armbian-build/compare/main...armbian:build:main)
+
+[armbian/build:main <- retro98boy/armbian-build:main](https://github.com/armbian/build/compare/main...retro98boy:armbian-build:main)
+
 # Original README
 
 <h2 align="center">
