@@ -22,6 +22,10 @@ function post_build_image__900_convert_to_abl_img() {
 		return 0
 	fi
 
+	# https://bugs.launchpad.net/ubuntu/+source/android-platform-tools/+bug/2058228
+	# https://salsa.debian.org/android-tools-team/android-platform-tools/-/blob/d26c3b5ac89efd92eb96ad029cd06400c1c9f015/debian/patches/system/Drop-gki-dependency-from-mkbootimg.patch
+	cp "${SRC}/packages/blobs/mkbootimg" /usr/bin/mkbootimg
+
 	display_alert "Converting image $version to rootfs" "${EXTENSION}" "info"
 	declare -g ROOTFS_IMAGE_FILE="${DESTIMG}/${version}.rootfs.img"
 	rootfs_start_sector=$(gdisk -l ${DESTIMG}/${version}.img | grep rootfs | awk '{print $2}')
