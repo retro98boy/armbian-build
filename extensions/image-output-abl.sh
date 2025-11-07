@@ -1,8 +1,16 @@
 function add_host_dependencies__abl_host_deps() {
+	if [[ $BOARD == damo-cockpit8250 ]]; then
+		return 0
+	fi
+
 	declare -g EXTRA_BUILD_DEPS="${EXTRA_BUILD_DEPS} mkbootimg"
 }
 
 function post_build_image__900_convert_to_abl_img() {
+	if [[ $BOARD == damo-cockpit8250 ]]; then
+		return 0
+	fi
+
 	[[ -z $version ]] && exit_with_error "version is not set"
 
 	if [ ! -z "$UEFI_GRUB_TARGET" ]; then
