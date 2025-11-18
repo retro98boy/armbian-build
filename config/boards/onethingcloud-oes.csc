@@ -56,4 +56,18 @@ function post_family_tweaks__onethingcloud-oes() {
 	cat <<- EOF > "${SDCARD}/etc/default/ttyd"
 		TTYD_OPTIONS="-W -p 7681 -O login"
 	EOF
+
+	display_alert "${BOARD}" "Warning messages output when executing armbian-install" "info"
+
+	echo "" > "${SDCARD}/usr/bin/armbian-install"
+	cat <<- EOF > "${SDCARD}/usr/bin/armbian-install"
+		#!/bin/sh
+		cat <<- TEXT
+			It looks like you are trying to install Armbian to eMMC,
+			but you are using the wrong method.
+			The correct way is to use the dd command to write Armbian.img directly to the eMMC.
+			For more detail, refer here:
+			https://github.com/retro98boy/onethingcloud-oes-linux
+		TEXT
+	EOF
 }
