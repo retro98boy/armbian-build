@@ -3,7 +3,7 @@
 | 设备                       | 源码状态    | 持有状态    | 启动类型                                   |
 |---------------------------|------------|------------|-------------------------------------------|
 | BesTV R3300-L             | 已提交上游   | 持有        | mainline U-Boot                          |
-| CAINIAO CNIoT-CORE        | 已提交上游   | 持有        | mainline U-Boot                          |
+| CAINIAO CNIoT-CORE        | 已提交上游   | 不再持有    | mainline U-Boot                          |
 | CAINIAO LEMO XIAOC        | 本仓库      | 持有        | mainline U-Boot                          |
 | CoreLab A311D2-TVPro      | 本仓库      | 持有         | compile from retro98boy/coreelec-u-boot |
 | OneThing Cloud OES        | 本仓库      | 不再持有     | vendor U-Boot (secure boot)              |
