@@ -1,22 +1,19 @@
-# Rockchip RK3576 SoC octa core 4-16GB SoC GBe eMMC UFS USB3 WIFI
-BOARD_NAME="Radxa Rock 4D"
-BOARDFAMILY="rk35xx"
-BOARD_MAINTAINER="HeyMeco"
-BOOTCONFIG="rock-4d-spi-rk3576_defconfig"
+# Rockchip RK3588s SoC octa core 4-16GB SoC eMMC USB3
+BOARD_NAME="Radxa CM5 IO"
+BOARDFAMILY="rockchip-rk3588"
+BOARD_MAINTAINER="amazingfate"
+BOOTCONFIG="radxa-cm5-io-rk3588s_defconfig"
 KERNEL_TARGET="vendor"
 KERNEL_TEST_TARGET="vendor"
 FULL_DESKTOP="yes"
 BOOT_LOGO="desktop"
-BOOT_FDT_FILE="rockchip/rk3576-rock-4d-spi.dtb"
+BOOT_FDT_FILE="rockchip/rk3588s-radxa-cm5-io.dtb"
 BOOT_SCENARIO="spl-blobs"
-BOOT_SUPPORT_SPI="yes"
-BOOT_SPI_RKSPI_LOADER="yes"
+BOOT_SOC="rk3588"
 IMAGE_PARTITION_TABLE="gpt"
-enable_extension "radxa-aic8800"
-AIC8800_TYPE="usb"
 
-function post_family_tweaks__rock-4d_naming_audios() {
-	display_alert "$BOARD" "Renaming Rock-4D audios" "info"
+function post_family_tweaks__radxa-cm5-io_naming_audios() {
+	display_alert "$BOARD" "Renaming radxa-cm5-io audios" "info"
 
 	mkdir -p $SDCARD/etc/udev/rules.d/
 	echo 'SUBSYSTEM=="sound", ENV{ID_PATH}=="platform-hdmi0-sound", ENV{SOUND_DESCRIPTION}="HDMI0 Audio"' > $SDCARD/etc/udev/rules.d/90-naming-audios.rules
