@@ -1,5 +1,5 @@
-# Amlogic A311D2 8GB
-BOARD_NAME="CoreLab A311D2-TVPro"
+# Amlogic A311D2 LPDDR4X eMMC GBE USB3 HDMI TX/RX LINE OUT/IN AP6256 WiFi/BT
+BOARD_NAME="CoreLab TVPro"
 BOARDFAMILY="meson-s4t7"
 KERNEL_TARGET="legacy"
 MODULES_BLACKLIST="iv009_isp iv009_isp_sensor iv009_isp_lens iv009_isp_iq"
@@ -13,7 +13,7 @@ KHADAS_BOARD_ID="tvpro" # used to compile the fip blobs
 
 OVERLAY_PREFIX='t7-a311d2'
 
-function post_family_config__corelab-a311d2-tvpro() {
+function post_family_config__tvpro() {
 	unset ASOUND_STATE
 }
 
