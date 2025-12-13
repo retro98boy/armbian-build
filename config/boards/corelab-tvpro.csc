@@ -21,8 +21,21 @@ function tvpro_bsp_legacy_postinst_link_video_firmware() {
 	ln -sf video_ucode.bin.t7 /lib/firmware/video/video_ucode.bin
 }
 
-function post_family_tweaks_bsp__tvpro_link_video_firmware_on_install() {
+function post_family_tweaks_bsp__tvpro() {
 	postinst_functions+=(tvpro_bsp_legacy_postinst_link_video_firmware)
+
+	display_alert "${BOARD}" "Installing ALSA UCM configuration files" "info"
+
+	install -Dm644 "${SRC}/packages/bsp/corelab-tvpro/corelab-tvpro-HiFi.conf" \
+		"${destination}/usr/share/alsa/ucm2/Amlogic/corelab-tvpro/corelab-tvpro-HiFi.conf"
+	install -Dm644 "${SRC}/packages/bsp/corelab-tvpro/corelab-tvpro.conf" \
+		"${destination}/usr/share/alsa/ucm2/Amlogic/corelab-tvpro/corelab-tvpro.conf"
+
+	if [ ! -d "${destination}/usr/share/alsa/ucm2/conf.d/corelab-tvpro" ]; then
+		mkdir -p "${destination}/usr/share/alsa/ucm2/conf.d/corelab-tvpro"
+	fi
+	ln -sfv /usr/share/alsa/ucm2/Amlogic/corelab-tvpro/corelab-tvpro.conf \
+		"${destination}/usr/share/alsa/ucm2/conf.d/corelab-tvpro/corelab-tvpro.conf"
 }
 
 function pre_install_kernel_debs__extra_boot_args() {
