@@ -1,11 +1,12 @@
 # Rockchip RK3528 SoC GMAC1 RTL8367RB NVMe
 BOARD_NAME="Radxa E24C"
+BOARD_VENDOR="radxa"
 BOARDFAMILY="rockchip-rk3588"
 BOARD_MAINTAINER="rpardini"
-BOOTCONFIG="radxa-e24c-spi-rk3528_defconfig"       # vendor uboot defconfig; Radxa's name
-KERNEL_TARGET="vendor"                             # edge (6.18) is not ready yet: ,edge
-BOOT_FDT_FILE="rockchip/rk3528-radxa-e24c-spi.dtb" # for non-eMMC boards, with SPI NOR: "SF: Detected mx25u12835f with page size 256 Bytes, erase size 4 KiB, total 16 MiB"
-#BOOT_FDT_FILE="rockchip/rk3528-radxa-e24c.dtb"    # for eMMC boards
+BOOTCONFIG="radxa-e24c-spi-rk3528_defconfig"       # same name across vendor and mainline
+KERNEL_TARGET="edge,vendor"                        # edge (6.18+) is still not ready, many patches required. keep an eye on Kwiboo
+BOOT_FDT_FILE="rockchip/rk3528-radxa-e24c-spi.dtb" # same name across vendor and mainline; for SPI boards
+#BOOT_FDT_FILE="rockchip/rk3528-radxa-e24c.dtb"    # same name across vendor and mainline; for eMMC boards
 BOOT_SCENARIO="spl-blobs"
 BOOT_SOC="rk3528"
 IMAGE_PARTITION_TABLE="gpt"
@@ -19,16 +20,15 @@ function post_family_config__e24c_use_mainline_uboot() {
 	fi
 
 	declare -g BOOTCONFIG="radxa-e24c-rk3528_defconfig" # mainline uboot defconfig; Kwiboo's name
-	display_alert "$BOARD" "Using Kwiboo's U-Boot for $BOARD / $BRANCH" "info"
+	display_alert "$BOARD" "Using Half-mainline/half-Kwiboo U-Boot for $BOARD / $BRANCH" "info"
 
 	declare -g BOOTDELAY=1
 
-	# This is Kwiboo's work branch, based on 2025.07 at ebd699c97de0576d9f8703b8afc5e71f98ff18d2
-	declare -g BOOTSOURCE="https://github.com/Kwiboo/u-boot-rockchip.git"
-	declare -g BOOTBRANCH="branch:rk3528" # at commit:ebd699c97de0576d9f8703b8afc5e71f98ff18d2
-	declare -g BOOTPATCHDIR="kwiboo-rk3528-no-patches"
+	declare -g BOOTSOURCE="https://github.com/u-boot/u-boot.git"
+	declare -g BOOTBRANCH="commit:47b50fb1125c539d80ed3e7f739c02c6486e1b52" # midway after 2026.01-rc4
+	declare -g BOOTPATCHDIR="v2026.01"
 	declare -g BOOTDIR="u-boot-${BOARD}"
-	declare -g UBOOT_TARGET_MAP="BL31=${RKBIN_DIR}/${BL31_BLOB} ROCKCHIP_TPL=${RKBIN_DIR}/${DDR_BLOB};;u-boot-rockchip.bin u-boot-rockchip-spi.bin"
+	declare -g UBOOT_TARGET_MAP="BL31=${RKBIN_DIR}/${BL31_BLOB} ROCKCHIP_TPL=${RKBIN_DIR}/${DDR_BLOB};;u-boot-rockchip.bin u-boot-rockchip-spi.bin u-boot-rockchip-usb471.bin u-boot-rockchip-usb472.bin"
 	unset uboot_custom_postprocess write_uboot_platform write_uboot_platform_mtd # disable stuff from rockchip64_common; we're using binman here which does all the work already
 
 	# Just use the binman-provided u-boot-rockchip.bin, which is ready-to-go
@@ -60,6 +60,9 @@ function post_config_uboot_target__extra_configs_for_e24c_uboot() {
 	if [[ "${BRANCH}" == "vendor" ]]; then
 		return 0
 	fi
+
+	display_alert "u-boot for ${BOARD}/${BRANCH}" "u-boot: enable RAMBoot images" "info"
+	run_host_command_logged scripts/config --enable CONFIG_ROCKCHIP_MASKROM_IMAGE
 
 	display_alert "u-boot for ${BOARD}/${BRANCH}" "u-boot: enable preboot & flash user LED in preboot" "info"
 	run_host_command_logged scripts/config --enable CONFIG_USE_PREBOOT
