@@ -1,7 +1,7 @@
-name: "Welcome first-time issue contributor"
+name: Welcome first-time PR contributor
 
 on:
-  issues:
+  pull_request_target:
     types: opened
 
 jobs:
@@ -13,15 +13,14 @@ jobs:
     steps:
       - uses: plbstl/first-contribution@v4
         with:
-          labels: "Good first issue"
-          issue-opened-msg: |
+          pr-opened-msg: |
             ### Hey @{fc-author}! 👋
 
-            Thanks for opening your first issue with the Armbian project — we’re glad to have you here! 🧡  
-            Your input doesn’t just help us improve the project — it benefits everyone who uses Armbian.
+            Thanks for submitting your first pull request to the Armbian project — we're excited to have you contributing! 🧡  
+            Your effort doesn’t just improve Armbian — it benefits the entire community of users and developers.
 
             If you'd like to stay informed about project updates or collaborate more closely with the team,  
             you can optionally share some personal contact preferences at [armbian.com/update-data](https://www.armbian.com/update-data/).  
             This helps us keep in touch without relying solely on GitHub notifications.
 
-            Also, don’t forget to ⭐ star the repo to support the work — and welcome aboard! 🚀
+            Also, don’t forget to ⭐ star the repo if you haven’t already — and welcome aboard! 🚀
