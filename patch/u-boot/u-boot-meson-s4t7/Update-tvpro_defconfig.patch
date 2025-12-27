@@ -1,0 +1,41 @@
+From 94c918cea35adc3040ec8493fe1591c609bebdf7 Mon Sep 17 00:00:00 2001
+From: retro98boy <retro98boy@qq.com>
+Date: Thu, 18 Sep 2025 10:51:29 +0800
+Subject: [PATCH 2/4] Update tvpro_defconfig
+
+Sep 16, 2025
+
+https: //github.com/armbian/build/tree/0a7f461e57372048bce9e95b30739736edf4738c/patch/u-boot/u-boot-meson-s4t7
+
+Change-Id: I7639cf4096e0226fc3f4f7ad2b4dac4a013f62b7
+---
+ board/khadas/defconfigs/tvpro_defconfig | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/board/khadas/defconfigs/tvpro_defconfig b/board/khadas/defconfigs/tvpro_defconfig
+index f467d0e0a6d..8f1d4362ad8 100644
+--- a/board/khadas/defconfigs/tvpro_defconfig
++++ b/board/khadas/defconfigs/tvpro_defconfig
+@@ -15,6 +15,7 @@ CONFIG_ARMV8_CRYPTO=y
+ CONFIG_DEBUG_UART=y
+ # CONFIG_ANDROID_BOOT_IMAGE is not set
+ CONFIG_OF_BOARD_SETUP=y
++CONFIG_SD_BOOT=y
+ CONFIG_BOOTDELAY=2
+ CONFIG_BOARD_LATE_INIT=y
+ # CONFIG_DISPLAY_CPUINFO is not set
+@@ -41,9 +42,10 @@ CONFIG_CMD_SF=y
+ CONFIG_CMD_SF_TEST=y
+ CONFIG_CMD_USB=y
+ CONFIG_CMD_SARADC=y
+-# CONFIG_CMD_SETEXPR is not set
+ CONFIG_CMD_BMP=y
++CONFIG_CMD_UUID=y
+ CONFIG_CMD_BTRFS=y
++CONFIG_CMD_FS_UUID=y
+ CONFIG_BOOTLOADER_CONTROL_BLOCK=y
+ CONFIG_CMD_BOOTCTOL_AVB=y
+ CONFIG_CMD_WATCHDOG=y
+-- 
+2.52.0
+
