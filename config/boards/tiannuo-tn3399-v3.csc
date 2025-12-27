@@ -1,5 +1,6 @@
 # Rockchip RK3399 hexa core 4GB SoC eMMC GBE USB3 WiFi/BT
 BOARD_NAME="TIANNUO TN3399_V3"
+BOARD_VENDOR="rockchip"
 BOARDFAMILY="rockchip64"
 BOARD_MAINTAINER="retro98boy"
 BOOTCONFIG="tn3399-v3-rk3399_defconfig"

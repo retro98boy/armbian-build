@@ -1,5 +1,6 @@
 # Amlogic A311D2 LPDDR4X eMMC GBE USB3 HDMI TX/RX LINE OUT/IN AP6256 WiFi/BT
 BOARD_NAME="CoreLab TVPro"
+BOARD_VENDOR="amlogic"
 BOARDFAMILY="meson-s4t7"
 KERNEL_TARGET="legacy"
 MODULES_BLACKLIST="iv009_isp iv009_isp_sensor iv009_isp_lens iv009_isp_iq"

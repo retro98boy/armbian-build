@@ -1,5 +1,6 @@
 # Amlogic A311D2 LPDDR4X eMMC GBE USB3 HDMI TX/RX LINE OUT
 BOARD_NAME="AOC 65T33Z"
+BOARD_VENDOR="amlogic"
 BOARDFAMILY="meson-s4t7"
 KERNEL_TARGET="legacy"
 MODULES_BLACKLIST="iv009_isp iv009_isp_sensor iv009_isp_lens iv009_isp_iq"
