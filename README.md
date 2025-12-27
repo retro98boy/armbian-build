@@ -6,6 +6,7 @@
 | CAINIAO CNIoT-CORE        | 已提交上游   | 不再持有    | mainline U-Boot                          |
 | CAINIAO LEMO XIAOC        | 本仓库      | 持有        | mainline U-Boot                          |
 | CoreLab TVPro T7 8G Version      | 本仓库      | 持有         | compile from retro98boy/coreelec-u-boot |
+| AOC 65T33Z T7 4G Version  | 本仓库      | 持有         | compile from retro98boy/coreelec-u-boot |
 | OneThing Cloud OES        | 本仓库      | 不再持有     | vendor U-Boot (secure boot)              |
 | OneThing Cloud OES Plus   | 本仓库      | 持有        | vendor U-Boot (secure boot)              |
 | SMART AM40                | 已提交上游   | 持有        | mainline U-Boot                          |

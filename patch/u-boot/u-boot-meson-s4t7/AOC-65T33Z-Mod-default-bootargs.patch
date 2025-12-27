@@ -1,0 +1,36 @@
+From 7493b4ef0055fb93c8cea97cdde678aa3ca14254 Mon Sep 17 00:00:00 2001
+From: retro98boy <retro98boy@qq.com>
+Date: Wed, 17 Sep 2025 20:47:45 +0800
+Subject: [PATCH 3/4] AOC 65T33Z: Mod default bootargs
+
+Sep 16, 2025
+
+https: //github.com/armbian/build/tree/0a7f461e57372048bce9e95b30739736edf4738c/patch/u-boot/u-boot-meson-s4t7
+
+Change-Id: I83f7646a32bc8a9d75da38a4f0912badd0a5ed7f
+---
+ board/khadas/configs/65t33z.h | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/board/khadas/configs/65t33z.h b/board/khadas/configs/65t33z.h
+index f40397d62f9..810e657460e 100644
+--- a/board/khadas/configs/65t33z.h
++++ b/board/khadas/configs/65t33z.h
+@@ -217,10 +217,10 @@
+         "nfsroot_path= \0" \
+ 	CONFIG_EXTRA_HDMI_ENV_SETTINGS \
+         "initargs="\
+-            "rootflags=data=writeback rw rootfstype=ext4" CONFIG_KNL_LOG_LEVEL "console=ttyS0,921600 console=tty0 no_console_suspend earlycon=aml-uart,0xfe078000 fsck.repair=yes net.ifnames=0 "\
+-            "ramoops.pstore_en=1 ramoops.record_size=0x8000 ramoops.console_size=0x4000 loop.max_part=4 "\
+-			"scsi_mod.scan=async xhci_hcd.quirks=0x800000 scramble_reg=0xfe02e030 gamma=0 "\
+-            "khadas_board=VIM4 boot_source=${boot_source} "\
++		\
++		"ramoops.pstore_en=1 ramoops.record_size=0x8000 ramoops.console_size=0x4000 loop.max_part=4 "\
++		"scsi_mod.scan=async xhci_hcd.quirks=0x800000 scramble_reg=0xfe02e030 gamma=0 "\
++		"khadas_board=VIM4 boot_source=${boot_source} "\
+             "\0"\
+         "nfs_boot="\
+             "dhcp;"\
+-- 
+2.52.0
+
