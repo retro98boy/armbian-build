@@ -1,6 +1,6 @@
-From bcfd02989f0868b7f9fc558e3beaf0c5122dd23b Mon Sep 17 00:00:00 2001
+From 0924679ec3068dd96056184770770d612c344133 Mon Sep 17 00:00:00 2001
 From: Daniel Golle <daniel@makrotopia.org>
-Date: Sun, 10 Aug 2025 22:22:30 +0800
+Date: Sun, 10 Aug 2025 22:24:25 +0800
 Subject: [PATCH] libata: add ledtrig support
 
 ---
@@ -33,7 +33,7 @@ index e00536b49..87d79bd6a 100644
  	bool "ATA ACPI Support"
  	depends on ACPI
 diff --git a/drivers/ata/libata-core.c b/drivers/ata/libata-core.c
-index 0cb97181d..faf860083 100644
+index 773799cfd..717f2a7f8 100644
 --- a/drivers/ata/libata-core.c
 +++ b/drivers/ata/libata-core.c
 @@ -703,6 +703,17 @@ static inline void ata_set_tf_cdl(struct ata_queued_cmd *qc, int cdl)
@@ -112,7 +112,7 @@ index 0cb97181d..faf860083 100644
  	for (i = 0; i < host->n_ports; i++) {
  		rc = ata_tport_add(host->dev,host->ports[i]);
 diff --git a/include/linux/libata.h b/include/linux/libata.h
-index 79974a992..8c0f85115 100644
+index e5695998a..bae1ec6f0 100644
 --- a/include/linux/libata.h
 +++ b/include/linux/libata.h
 @@ -23,6 +23,9 @@
@@ -125,7 +125,7 @@ index 79974a992..8c0f85115 100644
  
  /*
   * Define if arch has non-standard setup.  This is a _PCI_ standard
-@@ -934,6 +937,10 @@ struct ata_port {
+@@ -932,6 +935,10 @@ struct ata_port {
  #ifdef CONFIG_ATA_ACPI
  	struct ata_acpi_gtm	__acpi_init_gtm; /* use ata_acpi_init_gtm() */
  #endif
