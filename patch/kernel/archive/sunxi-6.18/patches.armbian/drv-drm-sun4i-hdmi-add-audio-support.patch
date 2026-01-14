@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: The-going <48602507+The-going@users.noreply.github.com>
-Date: Mon, 24 Jan 2022 13:07:16 +0300
-Subject: drv:gpu:drm:sun4i: Add HDMI audio sun4i-hdmi encoder
+Date: Mon, 9 Sep 2024 14:40:49 +0300
+Subject: drv:gpu:drm:sun4i: Add HDMI audio support
 
 Add HDMI audio support for the sun4i-hdmi encoder, used on
 the older Allwinner chips - A10, A20, A31.
@@ -10,14 +10,19 @@ Most of the code is based on the BSP implementation. In it
 dditional formats are supported (S20_3LE and S24_LE), however
 there where some problems with them and only S16_LE is left.
 
+This patch also reverts commit bd730c77fa37 ("drm/sun4i: hdmi: switch
+to struct drm_edid") as the audio support code is not compatible with
+the drm_edid API changes.
+
 Signed-off-by: Stefan Mavrodiev <stefan@olimex.com>
+Signed-off-by: The-going <48602507+The-going@users.noreply.github.com>
 ---
  drivers/gpu/drm/sun4i/Kconfig            |  11 +
  drivers/gpu/drm/sun4i/Makefile           |   3 +
  drivers/gpu/drm/sun4i/sun4i_hdmi.h       |  36 +
  drivers/gpu/drm/sun4i/sun4i_hdmi_audio.c | 450 ++++++++++
- drivers/gpu/drm/sun4i/sun4i_hdmi_enc.c   |  16 +
- 5 files changed, 516 insertions(+)
+ drivers/gpu/drm/sun4i/sun4i_hdmi_enc.c   |  34 +-
+ 5 files changed, 523 insertions(+), 11 deletions(-)
 
 diff --git a/drivers/gpu/drm/sun4i/Kconfig b/drivers/gpu/drm/sun4i/Kconfig
 index 111111111111..222222222222 100644
@@ -616,8 +621,23 @@ index 111111111111..222222222222 100644
  }
  
  static const struct drm_encoder_helper_funcs sun4i_hdmi_helper_funcs = {
-@@ -197,6 +209,10 @@ static int sun4i_hdmi_get_modes(struct drm_connector *connector)
- 	if (!edid)
+@@ -190,24 +202,24 @@ sun4i_hdmi_connector_clock_valid(const struct drm_connector *connector,
+ static int sun4i_hdmi_get_modes(struct drm_connector *connector)
+ {
+ 	struct sun4i_hdmi *hdmi = drm_connector_to_sun4i_hdmi(connector);
+-	const struct drm_edid *drm_edid;
++	struct edid *edid;
+ 	int ret;
+ 
+-	drm_edid = drm_edid_read_ddc(connector, hdmi->ddc_i2c ?: hdmi->i2c);
+-
+-	drm_edid_connector_update(connector, drm_edid);
+-	cec_s_phys_addr(hdmi->cec_adap,
+-			connector->display_info.source_physical_address, false);
+-
+-	if (!drm_edid)
++	edid = drm_get_edid(connector, hdmi->ddc_i2c ?: hdmi->i2c);
++	if (!edid)
  		return 0;
  
 +#ifdef CONFIG_DRM_SUN4I_HDMI_AUDIO
@@ -627,6 +647,16 @@ index 111111111111..222222222222 100644
  	DRM_DEBUG_DRIVER("Monitor is %s monitor\n",
  			 connector->display_info.is_hdmi ? "an HDMI" : "a DVI");
  
+-
+-	ret = drm_edid_connector_add_modes(connector);
+-	drm_edid_free(drm_edid);
++	drm_connector_update_edid_property(connector, edid);
++	cec_s_phys_addr_from_edid(hdmi->cec_adap, edid);
++	ret = drm_add_edid_modes(connector, edid);
++	kfree(edid);
+ 
+ 	return ret;
+ }
 -- 
 Armbian
 
