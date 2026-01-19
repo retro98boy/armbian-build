@@ -38,6 +38,39 @@
 		clock-frequency = <40000000>;
 	};
 
+	/* MAX9296 U42 */
+	gpio-i2c0 {
+		compatible = "i2c-gpio";
+		#address-cells = <1>;
+		#size-cells = <0>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&gpio_i2c0_pins>;
+		scl-gpios = <&tlmm 104 0>;
+		sda-gpios = <&tlmm 103 0>;
+	};
+
+	/* MAX9296 U49 */
+	gpio-i2c1 {
+		compatible = "i2c-gpio";
+		#address-cells = <1>;
+		#size-cells = <0>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&gpio_i2c1_pins>;
+		scl-gpios = <&tlmm 106 0>;
+		sda-gpios = <&tlmm 105 0>;
+	};
+
+	/* MAX9296 U56 */
+	gpio-i2c2 {
+		compatible = "i2c-gpio";
+		#address-cells = <1>;
+		#size-cells = <0>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&gpio_i2c2_pins>;
+		scl-gpios = <&tlmm 108 0>;
+		sda-gpios = <&tlmm 107 0>;
+	};
+
 	rgb-leds {
 		compatible = "pwm-leds-multicolor";
 
@@ -209,6 +242,95 @@
 		pinctrl-names = "default";
 		pinctrl-0 = <&usb_hub_pwr_en>;
 		regulator-name = "usb_hub_pwr";
+		regulator-always-on;
+		regulator-boot-on;
+	};
+
+	/* VTERM and VDD */
+	max9296_u42_vdd: regulator-max9296-u42-vdd {
+		compatible = "regulator-fixed";
+		enable-active-high;
+		gpio = <&tlmm 109 GPIO_ACTIVE_HIGH>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&max9296_u42_vdd_en>;
+		regulator-name = "max9296_u42_vdd";
+		vin-supply = <&usb_hub_pwr>;
+		regulator-always-on;
+		regulator-boot-on;
+	};
+
+	/* VTERM and VDD */
+	max9296_u49_vdd: regulator-max9296-u49-vdd {
+		compatible = "regulator-fixed";
+		enable-active-high;
+		gpio = <&tlmm 130 GPIO_ACTIVE_HIGH>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&max9296_u49_vdd_en>;
+		regulator-name = "max9296_u49_vdd";
+		vin-supply = <&usb_hub_pwr>;
+		regulator-always-on;
+		regulator-boot-on;
+	};
+
+	/* VTERM and VDD */
+	max9296_u56_vdd: regulator-max9296-u56-vdd {
+		compatible = "regulator-fixed";
+		enable-active-high;
+		gpio = <&tlmm 131 GPIO_ACTIVE_HIGH>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&max9296_u56_vdd_en>;
+		regulator-name = "max9296_u56_vdd";
+		vin-supply = <&usb_hub_pwr>;
+		regulator-always-on;
+		regulator-boot-on;
+	};
+
+	/* VDDIO, VDD18 and PWDNB */
+	max9296_u42_vdd2: regulator-max9296-u42-vdd2 {
+		compatible = "regulator-fixed";
+		enable-active-high;
+		gpio = <&tlmm 68 GPIO_ACTIVE_HIGH>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&max9296_u42_vdd2_en>;
+		regulator-name = "max9296_u42_vdd2";
+		vin-supply = <&usb_hub_pwr>;
+		regulator-always-on;
+		regulator-boot-on;
+	};
+
+	/* VDDIO, VDD18 and PWDNB */
+	max9296_u49_vdd2: regulator-max9296-u49-vdd2 {
+		compatible = "regulator-fixed";
+		enable-active-high;
+		gpio = <&tlmm 70 GPIO_ACTIVE_HIGH>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&max9296_u49_vdd2_en>;
+		regulator-name = "max9296_u49_vdd2";
+		vin-supply = <&usb_hub_pwr>;
+		regulator-always-on;
+		regulator-boot-on;
+	};
+
+	/* VDDIO, VDD18 and PWDNB */
+	max9296_u56_vdd2: regulator-max9296-u56-vdd2 {
+		compatible = "regulator-fixed";
+		enable-active-high;
+		gpio = <&tlmm 88 GPIO_ACTIVE_HIGH>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&max9296_u56_vdd2_en>;
+		regulator-name = "max9296_u56_vdd2";
+		vin-supply = <&usb_hub_pwr>;
+		regulator-always-on;
+		regulator-boot-on;
+	};
+
+	max9296_poc: regulator-max9296-poc {
+		compatible = "regulator-fixed";
+		enable-active-high;
+		gpio = <&tlmm 39 GPIO_ACTIVE_HIGH>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&max9296_poc_en>;
+		regulator-name = "max9296_poc";
 		regulator-always-on;
 		regulator-boot-on;
 	};
@@ -931,6 +1053,55 @@
 		bias-pull-up;
 	};
 
+	max9296_u42_vdd_en: max9296-u42-vdd-en {
+		pins = "gpio109";
+		function = "gpio";
+		output-low;
+		bias-pull-up;
+	};
+
+	max9296_u49_vdd_en: max9296-u49-vdd-en {
+		pins = "gpio130";
+		function = "gpio";
+		output-low;
+		bias-pull-up;
+	};
+
+	max9296_u56_vdd_en: max9296-u56-vdd-en {
+		pins = "gpio131";
+		function = "gpio";
+		output-low;
+		bias-pull-up;
+	};
+
+	max9296_u42_vdd2_en: max9296-u42-vdd2-en {
+		pins = "gpio68";
+		function = "gpio";
+		output-low;
+		bias-pull-up;
+	};
+
+	max9296_u49_vdd2_en: max9296-u49-vdd2-en {
+		pins = "gpio70";
+		function = "gpio";
+		output-low;
+		bias-pull-up;
+	};
+
+	max9296_u56_vdd2_en: max9296-u56-vdd2-en {
+		pins = "gpio88";
+		function = "gpio";
+		output-low;
+		bias-pull-up;
+	};
+
+	max9296_poc_en: max9296-poc-en {
+		pins = "gpio39";
+		function = "gpio";
+		output-low;
+		bias-pull-up;
+	};
+
 	lan7431_reset_pin: lan7431-reset-pin {
 		pins = "gpio10";
 		function = "gpio";
@@ -955,6 +1126,30 @@
 	amp_pvdd_12v_pin: amp-pvdd-12v-pin {
 		pins = "gpio13";
 		function = "gpio";
+		output-high;
+		bias-pull-up;
+	};
+
+	gpio_i2c0_pins: gpio-i2c0-pins {
+		pins = "gpio103", "gpio104";
+		function = "gpio";
+		drive-strength = <2>; /* 2 mA */
+		output-high;
+		bias-pull-up;
+	};
+
+	gpio_i2c1_pins: gpio-i2c1-pins {
+		pins = "gpio105", "gpio106";
+		function = "gpio";
+		drive-strength = <2>; /* 2 mA */
+		output-high;
+		bias-pull-up;
+	};
+
+	gpio_i2c2_pins: gpio-i2c2-pins {
+		pins = "gpio107", "gpio108";
+		function = "gpio";
+		drive-strength = <2>; /* 2 mA */
 		output-high;
 		bias-pull-up;
 	};
