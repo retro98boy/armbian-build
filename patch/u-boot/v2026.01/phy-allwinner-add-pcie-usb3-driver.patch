@@ -7,16 +7,14 @@ Signed-off-by: Marvin Wewer <mwewer37@proton.me>
 ---
  drivers/phy/allwinner/Kconfig                |   8 +
  drivers/phy/allwinner/Makefile               |   1 +
- drivers/phy/allwinner/phy-sun55i-pcie-usb3.c | 661 ++++++++++
- 3 files changed, 670 insertions(+)
+ drivers/phy/allwinner/phy-sun55i-pcie-usb3.c | 656 ++++++++++
+ 3 files changed, 665 insertions(+)
 
 diff --git a/drivers/phy/allwinner/Kconfig b/drivers/phy/allwinner/Kconfig
 index 111111111111..222222222222 100644
 --- a/drivers/phy/allwinner/Kconfig
 +++ b/drivers/phy/allwinner/Kconfig
-@@ -31,5 +31,13 @@ config PHY_SUN50I_USB3
- 	depends on ARCH_SUNXI
- 	select PHY
+@@ -33,3 +33,11 @@ config PHY_SUN50I_USB3
  	help
  	  Enable this to support the USB3 transceiver that is part of
  	  Allwinner sun50i SoCs.
@@ -32,9 +30,7 @@ diff --git a/drivers/phy/allwinner/Makefile b/drivers/phy/allwinner/Makefile
 index 111111111111..222222222222 100644
 --- a/drivers/phy/allwinner/Makefile
 +++ b/drivers/phy/allwinner/Makefile
-@@ -3,5 +3,6 @@
- # Copyright (C) 2016 Amarula Solutions
- #
+@@ -5,3 +5,4 @@
  
  obj-$(CONFIG_PHY_SUN4I_USB)		+= phy-sun4i-usb.o
  obj-$(CONFIG_PHY_SUN50I_USB3)		+= phy-sun50i-usb3.o
@@ -45,7 +41,7 @@ new file mode 100644
 index 000000000000..111111111111
 --- /dev/null
 +++ b/drivers/phy/allwinner/phy-sun55i-pcie-usb3.c
-@@ -0,0 +1,661 @@
+@@ -0,0 +1,656 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * Allwinner PIPE USB3.0 PCIE Combo Phy driver
@@ -81,9 +77,6 @@ index 000000000000..111111111111
 +/* PCIE USB3 Sub-System Registers */
 +/* Sub-System Version Reset Register */
 +#define PCIE_USB3_SYS_VER		0x00
-+
-+/* PHY CLK Gating Control Register */
-+#define PCIE_REF_CLK_GATING 31
 +
 +/* CCMU Base Address */
 +#define SUNXI_CCMU_BASE                0x02001000
@@ -599,9 +592,7 @@ index 000000000000..111111111111
 +    	reg_value |= (1 << PCIE_BRG_REG_RST);
 +    	writel(reg_value, PCIE_BGR_REG);
 +
-+    	reg_value = readl(0x2001a84);
-+    	reg_value |= (1 << PCIE_REF_CLK_GATING);
-+    	//reg_value = 0x81000001;
++    	reg_value = 0x81000001;
 +    	writel(reg_value, 0x2001a84);
 +
 +	pcie_usb3_sub_system_enable(combphy);
