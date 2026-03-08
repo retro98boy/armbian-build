@@ -2,7 +2,7 @@
 declare -g BOARD_NAME="DAMO Cockpit8250 ABL"
 declare -g BOARD_MAINTAINER="retro98boy"
 declare -g BOARDFAMILY="sm8250"
-declare -g KERNEL_TARGET="current"
+declare -g KERNEL_TARGET="current,edge"
 declare -g KERNEL_TEST_TARGET="current"
 declare -g EXTRAWIFI="no"
 declare -g PACKAGE_LIST_BOARD="alsa-ucm-conf" # Contain ALSA UCM top-level configuration file
