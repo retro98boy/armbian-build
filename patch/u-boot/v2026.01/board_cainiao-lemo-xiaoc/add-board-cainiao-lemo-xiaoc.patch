@@ -129,14 +129,14 @@ index 00000000..7a8fc668
 +CONFIG_ZSTD=y
 diff --git a/dts/upstream/src/arm64/amlogic/meson-g12b-a311d-cainiao-lemo-xiaoc.dts b/dts/upstream/src/arm64/amlogic/meson-g12b-a311d-cainiao-lemo-xiaoc.dts
 new file mode 100644
-index 00000000..aa744260
+index 00000000..443d0efe
 --- /dev/null
 +++ b/dts/upstream/src/arm64/amlogic/meson-g12b-a311d-cainiao-lemo-xiaoc.dts
-@@ -0,0 +1,584 @@
+@@ -0,0 +1,583 @@
 +// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
 +/*
 + * Copyright (c) 2019 BayLibre, SAS
-+ * Author: Neil Armstrong <narmstrong@baylibre.com>
++ * Copyright (c) 2019 Neil Armstrong <narmstrong@baylibre.com>
 + * Copyright (c) 2019 Christian Hewitt <christianshewitt@gmail.com>
 + * Copyright (c) 2025 retro98boy <retro98boy@qq.com>
 + */
@@ -157,7 +157,7 @@ index 00000000..aa744260
 +		serial0 = &uart_AO;
 +		ethernet0 = &ethmac;
 +		rtc0 = &hym8563;
-+		rtc99 = &vrtc;
++		rtc1 = &vrtc;
 +	};
 +
 +	chosen {
@@ -210,12 +210,11 @@ index 00000000..aa744260
 +		};
 +	};
 +
-+	ht6873: ht6873 {
++	ht6873: speaker-amplifier {
 +		compatible = "simple-audio-amplifier";
 +		enable-gpios = <&gpio GPIOA_9 GPIO_ACTIVE_HIGH>;
 +		VCC-supply = <&vdd_amp>;
-+		sound-name-prefix = "HT6873";
-+		status = "okay";
++		sound-name-prefix = "Speaker Amplifier";
 +	};
 +
 +	sdio_pwrseq: sdio-pwrseq {
@@ -355,7 +354,7 @@ index 00000000..aa744260
 +	/* Same as CAINIAO CNIoT-CORE */
 +	sound {
 +		compatible = "amlogic,axg-sound-card";
-+		model = "cainiao-cniot-core";
++		model = "cniot-core";
 +		audio-widgets = "Speaker", "Internal Speaker";
 +		audio-aux-devs = <&tdmout_a>, <&tdmout_b>, <&ht6873>;
 +		audio-routing = "TDMOUT_A IN 0", "FRDDR_A OUT 0",
@@ -366,10 +365,10 @@ index 00000000..aa744260
 +				"TDMOUT_B IN 1", "FRDDR_B OUT 1",
 +				"TDMOUT_B IN 2", "FRDDR_C OUT 1",
 +				"TDM_B Playback", "TDMOUT_B OUT",
-+				"HT6873 INL", "ACODEC LOLP",
-+				"HT6873 INR", "ACODEC LORP",
-+				"Internal Speaker", "HT6873 OUTL",
-+				"Internal Speaker", "HT6873 OUTR";
++				"Speaker Amplifier INL", "ACODEC LOLP",
++				"Speaker Amplifier INR", "ACODEC LORP",
++				"Internal Speaker", "Speaker Amplifier OUTL",
++				"Internal Speaker", "Speaker Amplifier OUTR";
 +
 +		clocks = <&clkc CLKID_MPLL2>,
 +			 <&clkc CLKID_MPLL0>,
@@ -525,7 +524,7 @@ index 00000000..aa744260
 +};
 +
 +&ext_mdio {
-+	rtl8211f: rtl8211f@0 {
++	rtl8211f: ethernet-phy@0 {
 +		reg = <0>;
 +		max-speed = <1000>;
 +
