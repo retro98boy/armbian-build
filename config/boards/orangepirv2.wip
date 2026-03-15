@@ -4,7 +4,7 @@ BOARD_VENDOR="xunlong"
 BOARDFAMILY="spacemit"
 BOARD_MAINTAINER="sven-ola"
 KERNEL_TARGET="legacy,current"
-BOOT_FDT_FILE="spacemit/x1_orangepi-rv2.dtb"
+BOOT_FDT_FILE="spacemit/k1-orangepi-rv2.dtb"
 BOOTDELAY=1
 SRC_EXTLINUX="yes"
 SRC_CMDLINE="earlycon=sbi console=tty1 console=ttyS0,115200 loglevel=1"
@@ -36,6 +36,8 @@ function post_family_tweaks_bsp__orangepirv2_wifi() {
 	display_alert "$BOARD" "Force load bmcdhd wireless" "info"
 	run_host_command_logged mkdir -pv "${destination}"/etc/modules-load.d
 	run_host_command_logged echo "bcmdhd" > "${destination}"/etc/modules-load.d/${BOARD}.conf
+	run_host_command_logged mkdir -pv "${destination}"/etc/modprobe.d
+	run_host_command_logged echo "options bcmdhd firmware_path=brcm/ nvram_path=brcm/" > "${destination}"/etc/modprobe.d/${BOARD}.conf
 }
 
 function post_family_tweaks_bsp__orangepirv2_bluetooth() {
