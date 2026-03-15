@@ -1,6 +1,6 @@
-# Rockchip RK3399 hexa core 4GB SoC eMMC GBE USB3 WiFi/BT
+# Rockchip RK3399 4GB DDR3 16GB eMMC GBE USB3 AP6255 WiFi/BT
 BOARD_NAME="TIANNUO TN3399_V3"
-BOARD_VENDOR="rockchip"
+BOARD_VENDOR="tiannuo"
 BOARDFAMILY="rockchip64"
 BOARD_MAINTAINER="retro98boy"
 BOOTCONFIG="tn3399-v3-rk3399_defconfig"
@@ -19,6 +19,8 @@ PACKAGE_LIST_BOARD="alsa-ucm-conf"
 function post_family_tweaks_bsp__tn3399-v3() {
 	display_alert "${BOARD}" "Installing ALSA UCM conf files" "info"
 
-	install -Dm644 $SRC/packages/bsp/rockchip-rt5640/rockchip,rt5640-codec.conf $destination/usr/share/alsa/ucm2/conf.d/simple-card/rockchip,rt5640-codec.conf
-	install -Dm644 $SRC/packages/bsp/rockchip-rt5640/rockchip,rt5640-codec-HiFi.conf $destination/usr/share/alsa/ucm2/conf.d/simple-card/rockchip,rt5640-codec-HiFi.conf
+	install -Dm644 "${SRC}/packages/bsp/tiannuo-tn3399-v3/tn3399-v3.conf" \
+		"${destination}/usr/share/alsa/ucm2/conf.d/simple-card/tn3399-v3.conf"
+	install -Dm644 "${SRC}/packages/bsp/tiannuo-tn3399-v3/tn3399-v3-HiFi.conf" \
+		"${destination}/usr/share/alsa/ucm2/conf.d/simple-card/tn3399-v3-HiFi.conf"
 }
