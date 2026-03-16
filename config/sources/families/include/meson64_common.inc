@@ -243,7 +243,7 @@ family_tweaks_bsp() {
 			EOF
 			;;
 		"jethubj200" | "odroidn2" | "odroidc4" | "khadas-vim2" | "odroidhc4" | "khadas-vim3" | "khadas-vim3l" | \
-		"radxa-zero" | "radxa-zero2" | "bananapi-m2s" | "cainiao-cniot-core")
+		"radxa-zero" | "radxa-zero2" | "bananapi-m2s" | "cainiao-cniot-core" | "liontron-k-a311d")
 			cat <<- EOF > "$destination"/etc/X11/xorg.conf
 				Section "Device"
 				    Identifier  "DRM Graphics Acclerated"
