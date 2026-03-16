@@ -1,0 +1,193 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+/*
+ * Copyright (c) 2019 BayLibre, SAS
+ * Copyright (c) 2019 Neil Armstrong <narmstrong@baylibre.com>
+ * Copyright (c) 2019 Christian Hewitt <christianshewitt@gmail.com>
+ * Copyright (c) 2025 retro98boy <retro98boy@qq.com>
+ */
+
+/*
+ 1. 1920x1080 60Hz dual-channel 8-bit LVDS panel
+ */
+
+/dts-v1/;
+
+#include "meson-g12b-liontron-k-a311d.dts"
+
+/ {
+	backlight: backlight {
+		compatible = "pwm-backlight";
+		enable-gpios = <&gpio GPIOH_4 GPIO_ACTIVE_HIGH>; /* EN in J20 connector */
+		pwms = <&pwm_ef 1 1000 0>; /* ADJ in J20 connector, GPIOH_5 */
+		brightness-levels = <
+			  0   1   2   3   4   5   6   7
+			  8   9  10  11  12  13  14  15
+			 16  17  18  19  20  21  22  23
+			 24  25  26  27  28  29  30  31
+			 32  33  34  35  36  37  38  39
+			 40  41  42  43  44  45  46  47
+			 48  49  50  51  52  53  54  55
+			 56  57  58  59  60  61  62  63
+			 64  65  66  67  68  69  70  71
+			 72  73  74  75  76  77  78  79
+			 80  81  82  83  84  85  86  87
+			 88  89  90  91  92  93  94  95
+			 96  97  98  99 100 101 102 103
+			104 105 106 107 108 109 110 111
+			112 113 114 115 116 117 118 119
+			120 121 122 123 124 125 126 127
+			128 129 130 131 132 133 134 135
+			136 137 138 139 140 141 142 143
+			144 145 146 147 148 149 150 151
+			152 153 154 155 156 157 158 159
+			160 161 162 163 164 165 166 167
+			168 169 170 171 172 173 174 175
+			176 177 178 179 180 181 182 183
+			184 185 186 187 188 189 190 191
+			192 193 194 195 196 197 198 199
+			200 201 202 203 204 205 206 207
+			208 209 210 211 212 213 214 215
+			216 217 218 219 220 221 222 223
+			224 225 226 227 228 229 230 231
+			232 233 234 235 236 237 238 239
+			240 241 242 243 244 245 246 247
+			248 249 250 251 252 253 254 255>;
+		default-brightness-level = <200>;
+	};
+
+	vcc_panel: regulator-vcc-panel {
+		compatible = "regulator-fixed";
+		enable-active-high;
+		gpio = <&gpio GPIOA_12 GPIO_ACTIVE_HIGH>;
+		regulator-name = "vcc_panel";
+	};
+
+	vdd_gm8775c: regulator-vdd-gm8775c { /* GM8775C VDD_LVDS&VDD_PLL */
+		compatible = "regulator-fixed";
+		enable-active-high;
+		gpio = <&gpio GPIOA_9 GPIO_ACTIVE_HIGH>;
+		regulator-name = "vdd_gm8775c";
+		regulator-always-on;
+		regulator-boot-on;
+	};
+
+	vdd2_gm8775c: regulator-vdd2-gm8775c { /* GM8775C VDD_IO&VDDRX */
+		compatible = "regulator-fixed";
+		enable-active-high;
+		gpio = <&gpio GPIOX_10 GPIO_ACTIVE_HIGH>;
+		regulator-name = "vdd2_gm8775c";
+		regulator-always-on;
+		regulator-boot-on;
+	};
+};
+
+&pwm_ef {
+	pinctrl-0 = <&pwm_e_pins &pwm_f_h_pins>;
+};
+
+&mipi_analog_dphy {
+	status = "okay";
+};
+
+&mipi_dphy {
+	status = "okay";
+};
+
+&mipi_dsi_panel_port {
+	dsi_out: endpoint {
+		remote-endpoint = <&gm8775c_in>;
+	};
+};
+
+&mipi_dsi {
+	status = "okay";
+
+	/*
+	 * 1080p60: 2200 * 1125 * 60 = 148.5 MHz pixel clock.
+	 * RGB888 over four DSI lanes: 148.5 MHz * 24 / 4 = 891 Mbps/lane.
+	 * GP0_PLL supplies both the DSI bit clock and the ENCL pixel clock.
+	 * MIPI_DSI_PXCLK supplies the bit clock at 891 MHz despite its name.
+	 * The DSI driver sets the VCLK2 divider to /6 for 148.5 MHz at CTS_ENCL.
+	 * VCLK2_DIV1 adds no further division.
+	 * Zero entries skip the corresponding parent or rate assignment.
+	 */
+	assigned-clocks = <&clkc CLKID_GP0_PLL>,
+			  <&clkc CLKID_MIPI_DSI_PXCLK_SEL>,
+			  <&clkc CLKID_MIPI_DSI_PXCLK>,
+			  <&clkc CLKID_CTS_ENCL_SEL>,
+			  <&clkc CLKID_VCLK2_SEL>;
+	assigned-clock-parents = <0>,
+				 <&clkc CLKID_GP0_PLL>,
+				 <0>,
+				 <&clkc CLKID_VCLK2_DIV1>,
+				 <&clkc CLKID_GP0_PLL>;
+	assigned-clock-rates = <891000000>,
+			       <0>,
+			       <891000000>,
+			       <0>,
+			       <0>;
+
+	panel0: panel@0 {
+		compatible = "rocknix,generic-dsi";
+		reg = <0>;
+
+		vdd-supply = <&vcc_panel>;
+		iovcc-supply = <&vdd2_gm8775c>;
+		enable-gpios = <&gpio GPIOA_13 GPIO_ACTIVE_HIGH>; /* GM8775C EN */
+		backlight = <&backlight>;
+		rotation = <0>;
+
+		panel_description =
+			"G delays=20,200,120,100,0,20,20 size=65,10 format=rgb888 lanes=4 flags=0xa03 dcs=0",
+			/* Use matching DSI and LVDS blanking intervals. */
+			"M clock=148500 horizontal=1920,88,44,148 vertical=1080,4,5,36 default=1",
+			"I generic=27aa wait=3",
+			"I generic=4802 wait=3",
+			"I generic=b620 wait=3",
+			"I generic=0180 wait=3",
+			"I generic=0238 wait=3",
+			"I generic=0347 wait=3",
+			"I generic=0458 wait=3",
+			"I generic=052c wait=3",
+			"I generic=0694 wait=3",
+			"I generic=0700 wait=3",
+			"I generic=0804 wait=3",
+			"I generic=0905 wait=3",
+			"I generic=0a24 wait=3",
+			/* Match the DSI pixel rate with a 28/3 PLL ratio. */
+			"I generic=0b83 wait=3",
+			"I generic=0c1c wait=3",
+			"I generic=0d01 wait=3",
+			"I generic=0e80 wait=3",
+			"I generic=0f20 wait=3",
+			"I generic=1020 wait=3",
+			"I generic=1103 wait=3",
+			"I generic=121b wait=3",
+			/* Map even pixels to LVDS A and odd pixels to LVDS B. */
+			"I generic=1363 wait=3",
+			"I generic=1401 wait=3",
+			"I generic=1523 wait=3",
+			"I generic=1640 wait=3",
+			"I generic=1700 wait=3",
+			"I generic=1801 wait=3",
+			"I generic=1923 wait=3",
+			"I generic=1a40 wait=3",
+			"I generic=1b00 wait=3",
+			"I generic=1e46 wait=3",
+			"I generic=5130 wait=3",
+			"I generic=1f10 wait=3",
+			"I generic=2a01 wait=3";
+
+		ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			port@0 {
+				reg = <0>;
+				gm8775c_in: endpoint {
+					remote-endpoint = <&dsi_out>;
+				};
+			};
+		};
+	};
+};

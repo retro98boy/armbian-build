@@ -1,0 +1,184 @@
+From: retro98boy <retro98boy@qq.com>
+Subject: [PATCH] drm/panel: rocknix: support generic DSI bridges
+
+Preserve generic packet types and bridge power timing.
+Allow bridge panels to disable standard DCS power commands with dcs=0.
+Append disable and unprepare delays after the existing five delay values.
+
+---
+ drivers/gpu/drm/panel/panel-rocknix-generic-dsi.c | 70 ++++++++++++++++-------
+ 1 file changed, 48 insertions(+), 22 deletions(-)
+
+diff --git a/drivers/gpu/drm/panel/panel-rocknix-generic-dsi.c b/drivers/gpu/drm/panel/panel-rocknix-generic-dsi.c
+index 111f85a..bc2fc18 100644
+--- a/drivers/gpu/drm/panel/panel-rocknix-generic-dsi.c
++++ b/drivers/gpu/drm/panel/panel-rocknix-generic-dsi.c
+@@ -38,6 +38,8 @@ struct generic_panel_delays {
+     int init;
+     int enable;
+     int ready;
++    int disable;
++    int unprepare;
+ };
+ 
+ struct generic_panel_size {
+@@ -54,6 +56,7 @@ struct generic_panel_mode {
+ };
+ 
+ #define DCS_PSEUDO_CMD_SEQ 0x10000
++#define DCS_PSEUDO_CMD_GENERIC 0x10001
+ struct generic_panel_init_seq {
+     int dcs;
+     int len;
+@@ -78,6 +81,7 @@ struct generic_panel {
+ 
+     enum drm_panel_orientation orientation;
+     bool prepared;
++    bool dcs_commands;
+ };
+ 
+ 
+@@ -96,13 +100,17 @@ int load_globals(char *data, struct mipi_dsi_device *dsi, struct generic_panel *
+         data = next_arg(data, &param, &val);
+         if (!val) continue;
+         if (strcmp(param, "delays") == 0) {
+-            int delays[] = {0, 5, 1, 25, 120, 50};
+-            get_options(val, 6, delays);
++            int delays[] = {0, 5, 1, 25, 120, 50, 0, 0};
++            get_options(val, ARRAY_SIZE(delays), delays);
+             ctx->delays.prepare     = delays[1];
+             ctx->delays.reset       = delays[2];
+             ctx->delays.init        = delays[3];
+             ctx->delays.enable      = delays[4];
+             ctx->delays.ready       = delays[5];
++            ctx->delays.disable     = delays[6];
++            ctx->delays.unprepare   = delays[7];
++        } else if (strcmp(param, "dcs") == 0) {
++            ctx->dcs_commands = !!simple_strtoul(val, NULL, 0);
+         } else if (strcmp(param, "size") == 0) {
+             int size[] = {0, -1, -1};
+             get_options(val, 3, size);
+@@ -207,8 +215,9 @@ int load_init_seq(char *data, struct mipi_dsi_device *dsi, struct generic_panel
+             }
+             //for (int i=0; i < (item->len); i++) { dev_info(dev, " %02x", item->data[i]);};
+             //dev_info(dev, "\n");
+-        } else if (strcmp(param, "seq") == 0) {
+-            item->dcs = DCS_PSEUDO_CMD_SEQ;
++        } else if (strcmp(param, "seq") == 0 || strcmp(param, "generic") == 0) {
++            item->dcs = strcmp(param, "generic") == 0 ?
++                DCS_PSEUDO_CMD_GENERIC : DCS_PSEUDO_CMD_SEQ;
+             item->len = (strlen(val)) >> 1;
+             item->data = devm_kzalloc(dev, item->len, GFP_KERNEL);
+             if (!item->data)
+@@ -377,6 +386,8 @@ static int generic_panel_init_sequence(struct generic_panel *ctx)
+                     dev_info(ctx->dev, "read[%d]: %02x\n", i, readbuf[i]);
+                 }
+             }
++        } else if (iseq->dcs == DCS_PSEUDO_CMD_GENERIC) {
++            ret = mipi_dsi_generic_write(dsi, iseq->data, iseq->len);
+         } else if (iseq->dcs == DCS_PSEUDO_CMD_SEQ) {
+             ret = mipi_dsi_dcs_write_buffer(dsi, iseq->data, iseq->len);
+             dev_dbg(dev, "iseq 0x%px len=%d -> %d\n", (void*)iseq, iseq->len, ret);
+@@ -384,6 +395,8 @@ static int generic_panel_init_sequence(struct generic_panel *ctx)
+             ret = mipi_dsi_dcs_write(dsi, iseq->dcs, iseq->data, iseq->len);
+             dev_dbg(dev, "iseq %02x len=%d -> %d\n", iseq->dcs, iseq->len, ret);
+         }
++        if (ret < 0 && !iseq->read)
++            return ret;
+         if (iseq->wait) {
+             msleep(iseq->wait);
+         }
+@@ -404,14 +417,19 @@ static int generic_panel_unprepare(struct drm_panel *panel)
+     if (!ctx->prepared)
+         return 0;
+ 
+-    ret = mipi_dsi_dcs_set_display_off(dsi);
+-    if (ret < 0)
+-        dev_err(ctx->dev, "failed to set display off: %d\n", ret);
++    if (ctx->delays.disable)
++        msleep(ctx->delays.disable);
+ 
+-    ret = mipi_dsi_dcs_enter_sleep_mode(dsi);
+-    if (ret < 0) {
+-        dev_err(ctx->dev, "failed to enter sleep mode: %d\n", ret);
+-        /* fall through: still power down and clear prepared, or re-prepare never runs */
++    if (ctx->dcs_commands) {
++        ret = mipi_dsi_dcs_set_display_off(dsi);
++        if (ret < 0)
++            dev_err(ctx->dev, "failed to set display off: %d\n", ret);
++
++        ret = mipi_dsi_dcs_enter_sleep_mode(dsi);
++        if (ret < 0) {
++            dev_err(ctx->dev, "failed to enter sleep mode: %d\n", ret);
++            /* fall through: still power down and clear prepared, or re-prepare never runs */
++        }
+     }
+ 
+     if (ctx->enable_gpio) { gpiod_set_value_cansleep(ctx->enable_gpio, 0); }
+@@ -422,6 +440,9 @@ static int generic_panel_unprepare(struct drm_panel *panel)
+ 
+     gpiod_set_value_cansleep(ctx->reset_gpio, 1);
+ 
++    if (ctx->delays.unprepare)
++        msleep(ctx->delays.unprepare);
++
+     ctx->prepared = false;
+ 
+     return 0;
+@@ -464,16 +485,18 @@ static int generic_panel_prepare(struct drm_panel *panel)
+         goto disable_iovcc;
+     }
+ 
+-    ret = mipi_dsi_dcs_set_display_on(dsi);
+-    if (ret < 0) {
+-        dev_err(ctx->dev, "Failed to set display on: %d\n", ret);
+-        goto disable_iovcc;
+-    }
++    if (ctx->dcs_commands) {
++        ret = mipi_dsi_dcs_set_display_on(dsi);
++        if (ret < 0) {
++            dev_err(ctx->dev, "Failed to set display on: %d\n", ret);
++            goto disable_iovcc;
++        }
+ 
+-    ret = mipi_dsi_dcs_exit_sleep_mode(dsi);
+-    if (ret < 0) {
+-        dev_err(ctx->dev, "Failed to exit sleep mode: %d\n", ret);
+-        goto disable_iovcc;
++        ret = mipi_dsi_dcs_exit_sleep_mode(dsi);
++        if (ret < 0) {
++            dev_err(ctx->dev, "Failed to exit sleep mode: %d\n", ret);
++            goto disable_iovcc;
++        }
+     }
+ 
+     msleep(ctx->delays.enable);
+@@ -485,6 +508,8 @@ static int generic_panel_prepare(struct drm_panel *panel)
+     return 0;
+ 
+ disable_iovcc:
++    gpiod_set_value_cansleep(ctx->reset_gpio, 1);
++    gpiod_set_value_cansleep(ctx->enable_gpio, 0);
+     regulator_disable(ctx->iovcc);
+ disable_vdd:
+     regulator_disable(ctx->vdd);
+@@ -621,6 +646,7 @@ static int generic_panel_probe(struct mipi_dsi_device *dsi)
+     mipi_dsi_set_drvdata(dsi, ctx);
+ 
+     ctx->dev = dev;
++    ctx->dcs_commands = true;
+ 
+     // Some defaults
+     dsi->lanes = 1;
+@@ -659,9 +685,9 @@ static void generic_panel_shutdown(struct mipi_dsi_device *dsi)
+ {
+     struct generic_panel *ctx = mipi_dsi_get_drvdata(dsi);
+ 
+-    drm_panel_unprepare(&ctx->panel);
+-
+     drm_panel_disable(&ctx->panel);
++
++    drm_panel_unprepare(&ctx->panel);
+ }
+ 
+ static void generic_panel_remove(struct mipi_dsi_device *dsi)
