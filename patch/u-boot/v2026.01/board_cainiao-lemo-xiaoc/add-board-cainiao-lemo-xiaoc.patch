@@ -24,10 +24,10 @@ index 00000000..847bafac
 +obj-y	:= lemo-xiaoc.o
 diff --git a/board/amlogic/lemo-xiaoc/lemo-xiaoc.c b/board/amlogic/lemo-xiaoc/lemo-xiaoc.c
 new file mode 100644
-index 00000000..325e39f9
+index 00000000..3875f390
 --- /dev/null
 +++ b/board/amlogic/lemo-xiaoc/lemo-xiaoc.c
-@@ -0,0 +1,158 @@
+@@ -0,0 +1,182 @@
 +// SPDX-License-Identifier: GPL-2.0+
 +/*
 + * Author: retro98boy <retro98boy@qq.com>
@@ -42,6 +42,7 @@ index 00000000..325e39f9
 +#include <asm/io.h>
 +#include <asm/arch/eth.h>
 +#include <stdbool.h>
++#include <power/regulator.h>
 +
 +static struct gpio_desc pwrbtn_gpio[1] = { 0 };
 +static bool pwrbtn_valid = false;
@@ -162,6 +163,27 @@ index 00000000..325e39f9
 +	printf("\nButton released safely. Proceeding...\n");
 +}
 +
++static void enable_usb_regulators(void)
++{
++	struct udevice *dev = NULL;
++	int rc = -1;
++	int i = 0;
++
++	const char *reg_names[] = { "usb1_5v", "usb2_5v", "usb3_5v", "usb4_5v",
++				    "typec_5v" };
++
++	for (i = 0; i < ARRAY_SIZE(reg_names); i++) {
++		rc = regulator_get_by_platname(reg_names[i], &dev);
++		if (rc) {
++			printf("[!] %s: Not found (err=%d)\n", reg_names[i],
++			       rc);
++			continue;
++		}
++
++		(void)regulator_set_enable(dev, true);
++	}
++}
++
 +int misc_init_r(void)
 +{
 +	meson_generate_serial_ethaddr();
@@ -171,6 +193,8 @@ index 00000000..325e39f9
 +
 +int meson_board_late_init(void)
 +{
++	enable_usb_regulators();
++
 +#if defined(CONFIG_WATCHDOG)
 +	printf("Watchdog set, skip USB boot detection.\n");
 +	return 0;
@@ -304,10 +328,10 @@ index 00000000..bb5511bc
 +CONFIG_ZSTD=y
 diff --git a/dts/upstream/src/arm64/amlogic/meson-g12b-a311d-cainiao-lemo-xiaoc.dts b/dts/upstream/src/arm64/amlogic/meson-g12b-a311d-cainiao-lemo-xiaoc.dts
 new file mode 100644
-index 00000000..443d0efe
+index 00000000..89cce48b
 --- /dev/null
 +++ b/dts/upstream/src/arm64/amlogic/meson-g12b-a311d-cainiao-lemo-xiaoc.dts
-@@ -0,0 +1,583 @@
+@@ -0,0 +1,585 @@
 +// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
 +/*
 + * Copyright (c) 2019 BayLibre, SAS
@@ -468,51 +492,51 @@ index 00000000..443d0efe
 +	};
 +
 +	/* HDMI USB1 USB2 USB3 USB4 Type-C */
-+	vcc_5v_usb1: regulator-vcc-5v-usb1 {
++	regulator-usb1-5v {
 +		compatible = "regulator-fixed";
 +		enable-active-high;
 +		gpio = <&gpio GPIOA_12 GPIO_ACTIVE_HIGH>;
-+		regulator-name = "vcc_5v_usb1";
++		regulator-name = "usb1_5v";
 +		regulator-always-on;
 +		regulator-boot-on;
 +		vin-supply = <&vcc_5v>;
 +	};
 +
-+	vcc_5v_usb2: regulator-vcc-5v-usb2 {
++	regulator-usb2-5v {
 +		compatible = "regulator-fixed";
 +		enable-active-high;
 +		gpio = <&gpio GPIOA_2 GPIO_ACTIVE_HIGH>;
-+		regulator-name = "vcc_5v_usb2";
++		regulator-name = "usb2_5v";
 +		regulator-always-on;
 +		regulator-boot-on;
 +		vin-supply = <&vcc_5v>;
 +	};
 +
-+	vcc_5v_usb3: regulator-vcc-5v-usb3 {
++	regulator-usb3-5v {
 +		compatible = "regulator-fixed";
 +		enable-active-high;
 +		gpio = <&gpio GPIOA_3 GPIO_ACTIVE_HIGH>;
-+		regulator-name = "vcc_5v_usb3";
++		regulator-name = "usb3_5v";
 +		regulator-always-on;
 +		regulator-boot-on;
 +		vin-supply = <&vcc_5v>;
 +	};
 +
-+	vcc_5v_usb4: regulator-vcc-5v-usb4 {
++	regulator-usb4-5v {
 +		compatible = "regulator-fixed";
 +		enable-active-high;
 +		gpio = <&gpio GPIOA_4 GPIO_ACTIVE_HIGH>;
-+		regulator-name = "vcc_5v_usb4";
++		regulator-name = "usb4_5v";
 +		regulator-always-on;
 +		regulator-boot-on;
 +		vin-supply = <&vcc_5v>;
 +	};
 +
-+	vcc_5v_typec: regulator-vcc-5v-typec {
++	regulator-typec-5v {
 +		compatible = "regulator-fixed";
 +		enable-active-high;
 +		gpio = <&gpio GPIOA_11 GPIO_ACTIVE_HIGH>;
-+		regulator-name = "vcc_5v_typec";
++		regulator-name = "typec_5v";
 +		regulator-always-on;
 +		regulator-boot-on;
 +		vin-supply = <&vcc_5v>;
@@ -526,11 +550,11 @@ index 00000000..443d0efe
 +		vin-supply = <&dc_in>;
 +	};
 +
-+	/* Same as CAINIAO CNIoT-CORE */
++	/* Similar to CAINIAO CNIoT-CORE */
 +	sound {
 +		compatible = "amlogic,axg-sound-card";
 +		model = "cniot-core";
-+		audio-widgets = "Speaker", "Internal Speaker";
++		audio-widgets = "Speaker", "Internal Speakers";
 +		audio-aux-devs = <&tdmout_a>, <&tdmout_b>, <&ht6873>;
 +		audio-routing = "TDMOUT_A IN 0", "FRDDR_A OUT 0",
 +				"TDMOUT_A IN 1", "FRDDR_B OUT 0",
@@ -541,9 +565,11 @@ index 00000000..443d0efe
 +				"TDMOUT_B IN 2", "FRDDR_C OUT 1",
 +				"TDM_B Playback", "TDMOUT_B OUT",
 +				"Speaker Amplifier INL", "ACODEC LOLP",
++				"Speaker Amplifier INL", "ACODEC LOLN",
 +				"Speaker Amplifier INR", "ACODEC LORP",
-+				"Internal Speaker", "Speaker Amplifier OUTL",
-+				"Internal Speaker", "Speaker Amplifier OUTR";
++				"Speaker Amplifier INR", "ACODEC LORN",
++				"Internal Speakers", "Speaker Amplifier OUTL",
++				"Internal Speakers", "Speaker Amplifier OUTR";
 +
 +		clocks = <&clkc CLKID_MPLL2>,
 +			 <&clkc CLKID_MPLL0>,
@@ -876,15 +902,15 @@ index 00000000..443d0efe
 +};
 +
 +&usb2_phy0 {
-+	phy-supply = <&vcc_5v_usb2>;
++	phy-supply = <&dc_in>;
 +};
 +
 +&usb2_phy1 {
-+	phy-supply = <&vcc_5v_usb3>;
++	phy-supply = <&dc_in>;
 +};
 +
 +&usb3_pcie_phy {
-+	phy-supply = <&vcc_5v_usb4>;
++	phy-supply = <&dc_in>;
 +};
 +
 +&usb {

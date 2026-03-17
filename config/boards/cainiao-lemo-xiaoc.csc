@@ -39,7 +39,7 @@ function post_uboot_custom_postprocess__repack_vendor_fip_with_mainline_uboot() 
 }
 
 function post_family_tweaks_bsp__cainiao-lemo-xiaoc() {
-	# Same as CAINIAO CNIoT-CORE
+	# Similar to CAINIAO CNIoT-CORE
 	display_alert "${BOARD}" "Installing ALSA UCM configuration files" "info"
 
 	# Use ALSA UCM via CLI:
