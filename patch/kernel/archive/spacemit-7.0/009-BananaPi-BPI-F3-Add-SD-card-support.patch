@@ -37,7 +37,7 @@ index a33298bf61a9..5fca6e5491cb 100644
  			};
  
 -			buck4 {
-+			sd_vmmc: buck4 {
++			buck4: buck4 {
  				regulator-min-microvolt = <500000>;
  				regulator-max-microvolt = <3300000>;
  				regulator-ramp-delay = <5000>;
@@ -46,7 +46,7 @@ index a33298bf61a9..5fca6e5491cb 100644
  			};
  
 -			aldo1 {
-+			sd_vqmmc: aldo1 {
++			aldo1: aldo1 {
  				regulator-min-microvolt = <500000>;
  				regulator-max-microvolt = <3400000>;
  				regulator-boot-on;
@@ -73,8 +73,8 @@ index a33298bf61a9..5fca6e5491cb 100644
 +	sd-uhs-sdr25;
 +	sd-uhs-sdr50;
 +	sd-uhs-sdr104;
-+	vmmc-supply = <&sd_vmmc>;
-+	vqmmc-supply = <&sd_vqmmc>;
++	vmmc-supply = <&buck4>;
++	vqmmc-supply = <&aldo1>;
 +	status = "okay";
 +};
 +
