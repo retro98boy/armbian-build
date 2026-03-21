@@ -1,37 +1,32 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
-From: Thorsten Maerz <info@netztorte.de>
-Date: Fri, 20 Mar 2026 13:57:03 +0000
-Subject: feat: Add u-boot dts for MKSKLIPAD50 board
- dts/upstream/src/arm64/rockchip/rk3328-mksklipad50.dts
-
-Signed-off-by: Thorsten Maerz <info@netztorte.de>
+From: Maxim Medvedev <redrathnure@gmail.com>
+Date: Sun, 8 Dec 2024 13:58:51 +0000
+Subject: add U-Boot draft for Qidi-x6 board
 ---
- dts/upstream/src/arm64/rockchip/rk3328-mksklipad50.dts | 571 ++++++++++
- 1 file changed, 571 insertions(+)
+ arch/arm/dts/rk3328-qidi-x6.dts | 387 ++++++++++
+ 1 file changed, 387 insertions(+)
 
-diff --git a/dts/upstream/src/arm64/rockchip/rk3328-mksklipad50.dts b/dts/upstream/src/arm64/rockchip/rk3328-mksklipad50.dts
-new file mode 100644
-index 00000000000..2fd51e35387
+diff --git a/arch/arm/dts/rk3328-qidi-x6.dts b/arch/arm/dts/rk3328-qidi-x6.dts
+new file mode 100755
+index 0000000000..20ca255664
 --- /dev/null
-+++ b/dts/upstream/src/arm64/rockchip/rk3328-mksklipad50.dts
-@@ -0,0 +1,571 @@
++++ b/arch/arm/dts/rk3328-qidi-x6.dts
+@@ -0,0 +1,387 @@
 +// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
 +/*
-+ * Based on rk3328-roc-cc.dtb from original MKS-Klipad50 image
++ * Based on rk3328-roc-cc.dts
 + *
-+ * Copyright (c) 2025 Thorsten Maerz
++ * Copyright (c) 2017 T-Chip Intelligent Technology Co., Ltd
 + */
 +
 +/dts-v1/;
 +#include "rk3328.dtsi"
 +
 +/ {
-+	model = "Makerbase MKS-KLIPAD50";
-+	compatible = "mks,rk3328-mksklipad50", "mks,rk3328-mkspi", "rockchip,rk3328";
++	model = "Firefly roc-rk3328-cc";
++	compatible = "firefly,roc-rk3328-cc", "rockchip,rk3328";
 +
 +	aliases {
-+		ethernet0 = &gmac2io;
-+		ethernet1 = &gmac2phy;
 +		mmc0 = &sdmmc;
 +		mmc1 = &emmc;
 +	};
@@ -39,7 +34,6 @@ index 00000000000..2fd51e35387
 +	chosen {
 +		stdout-path = "serial2:1500000n8";
 +	};
-+
 +
 +	gmac_clkin: external-gmac-clock {
 +		compatible = "fixed-clock";
@@ -59,7 +53,7 @@ index 00000000000..2fd51e35387
 +
 +	vcc_sd: sdmmc-regulator {
 +		compatible = "regulator-fixed";
-+		gpio = <&gpio0 RK_PD6 GPIO_ACTIVE_HIGH>;
++		gpio = <&gpio0 RK_PD6 GPIO_ACTIVE_LOW>;
 +		pinctrl-names = "default";
 +		pinctrl-0 = <&sdmmc0m1_pin>;
 +		regulator-boot-on;
@@ -71,16 +65,12 @@ index 00000000000..2fd51e35387
 +
 +	vcc_sdio: sdmmcio-regulator {
 +		compatible = "regulator-gpio";
-+		gpios = <&gpio2 RK_PC4 GPIO_ACTIVE_HIGH>;
-+		pinctrl-0 = <&sdio_vcc_pin>;
-+		pinctrl-names = "default";
-+		states = <1800000 0x0>,
-+			 <3300000 0x1>;
++		gpios = <&grf_gpio 0 GPIO_ACTIVE_HIGH>;
++		states = <1800000 0x1>,
++			 <3300000 0x0>;
 +		regulator-name = "vcc_sdio";
 +		regulator-type = "voltage";
 +		regulator-min-microvolt = <1800000>;
-+		regulator-settling-time-us = <5000>;
-+		startup-delay-us = <2000>;
 +		regulator-max-microvolt = <3300000>;
 +		regulator-always-on;
 +		vin-supply = <&vcc_sys>;
@@ -89,7 +79,7 @@ index 00000000000..2fd51e35387
 +	vcc_host1_5v: vcc_otg_5v: vcc-host1-5v-regulator {
 +		compatible = "regulator-fixed";
 +		enable-active-high;
-+		gpio = <&gpio0 RK_PA2 GPIO_ACTIVE_HIGH>;
++		gpio = <&gpio1 RK_PD2 GPIO_ACTIVE_HIGH>;
 +		pinctrl-names = "default";
 +		pinctrl-0 = <&usb20_host_drv>;
 +		regulator-name = "vcc_host1_5v";
@@ -118,7 +108,7 @@ index 00000000000..2fd51e35387
 +		compatible = "gpio-leds";
 +
 +		power_led: led-0 {
-+			label = "firefly:green:power";
++			label = "firefly:blue:power";
 +			linux,default-trigger = "heartbeat";
 +			gpios = <&rk805 1 GPIO_ACTIVE_LOW>;
 +			default-state = "on";
@@ -126,88 +116,21 @@ index 00000000000..2fd51e35387
 +		};
 +
 +		user_led: led-1 {
-+			label = "firefly:blue:user";
-+			linux,default-trigger = "activity";
++			label = "firefly:yellow:user";
++			linux,default-trigger = "mmc1";
 +			gpios = <&rk805 0 GPIO_ACTIVE_LOW>;
 +			default-state = "off";
 +			mode = <0x05>;
 +		};
 +	};
-+
-+	usb3phy_grf: syscon@ff460000 {
-+		compatible = "rockchip,usb3phy-grf", "syscon";
-+		reg = <0x0 0xff460000 0x0 0x1000>;
-+	};
-+
-+	u3phy: usb3-phy@ff470000 {
-+		compatible = "rockchip,rk3328-u3phy";
-+		reg = <0x0 0xff470000 0x0 0x0>;
-+		rockchip,u3phygrf = <&usb3phy_grf>;
-+		rockchip,grf = <&grf>;
-+		interrupts = <GIC_SPI 77 IRQ_TYPE_LEVEL_HIGH>;
-+		interrupt-names = "linestate";
-+		clocks = <&cru PCLK_USB3PHY_OTG>, <&cru PCLK_USB3PHY_PIPE>;
-+		clock-names = "u3phy-otg", "u3phy-pipe";
-+		resets = <&cru SRST_USB3PHY_U2>,
-+			 <&cru SRST_USB3PHY_U3>,
-+			 <&cru SRST_USB3PHY_PIPE>,
-+			 <&cru SRST_USB3OTG_UTMI>,
-+			 <&cru SRST_USB3PHY_OTG_P>,
-+			 <&cru SRST_USB3PHY_PIPE_P>;
-+		reset-names = "u3phy-u2-por", "u3phy-u3-por",
-+			      "u3phy-pipe-mac", "u3phy-utmi-mac",
-+			      "u3phy-utmi-apb", "u3phy-pipe-apb";
-+		#address-cells = <2>;
-+		#size-cells = <2>;
-+		ranges;
-+		status = "okay";
-+
-+		u3phy_utmi: utmi@ff470000 {
-+			reg = <0x0 0xff470000 0x0 0x8000>;
-+			#phy-cells = <0>;
-+			status = "okay";
-+		};
-+
-+		u3phy_pipe: pipe@ff478000 {
-+			reg = <0x0 0xff478000 0x0 0x8000>;
-+			#phy-cells = <0>;
-+			status = "okay";
-+		};
-+	};
-+
-+	wireless_wlan: wireless-wlan {
-+		compatible = "wlan-platdata";
-+		rockchip,grf = <&grf>;
-+		sdio_vref = <3300>;
-+		status = "okay";
-+		WIFI,host_wake_irq = <&gpio1 RK_PC3 GPIO_ACTIVE_HIGH>;
-+		wifi_chip_type = "rtl8723bs";
-+	};
-+
-+	sdio_pwrseq0: sdio_pwrseq0 {
-+		compatible = "mmc-pwrseq-simple";
-+		pinctrl-names = "default";
-+		pinctrl-0 = <&wifi_enable_h>;
-+		reset-gpios = <&gpio1 RK_PC2 GPIO_ACTIVE_LOW>;
-+	};
 +};
 +
 +&analog_sound {
-+	simple-audio-card,name = "TRS Jack";
 +	status = "okay";
 +};
 +
 +&codec {
-+	mute-gpios = <&grf_gpio RK_PA0 GPIO_ACTIVE_LOW>;
 +	status = "okay";
-+};
-+
-+&gmac2phy {
-+	assigned-clocks = <&cru SCLK_MAC2PHY>;
-+	assigned-clock-rate = <50000000>;
-+	assigned-clock-parents = <&cru SCLK_MAC2PHY_SRC>;
-+	phy-supply = <&vcc_phy>;
-+	status = "disabled";
 +};
 +
 +&cpu0 {
@@ -256,25 +179,10 @@ index 00000000000..2fd51e35387
 +	snps,txpbl = <0x4>;
 +	tx_delay = <0x24>;
 +	rx_delay = <0x18>;
-+	status = "disabled";
-+};
-+
-+&gpu {
-+	mali-supply = <&vdd_logic>;
++	status = "okay";
 +};
 +
 +&hdmi {
-+	interrupts = <GIC_SPI 35 IRQ_TYPE_LEVEL_HIGH>,
-+		     <GIC_SPI 71 IRQ_TYPE_LEVEL_HIGH>;
-+	clocks = <&cru PCLK_HDMI>,
-+		 <&cru SCLK_HDMI_SFC>,
-+		 <&hdmiphy>,
-+		 <&cru SCLK_RTC32K>;
-+	clock-names = "iahb",
-+		      "isfr",
-+		      "vpll",
-+		      "cec";
-+	pinctrl-0 = <&hdmi_cec &hdmii2c_xfer &hdmi_hpd &hdmi_backlight>;
 +	status = "okay";
 +};
 +
@@ -283,7 +191,7 @@ index 00000000000..2fd51e35387
 +};
 +
 +&hdmi_sound {
-+	status = "disabled";
++	status = "okay";
 +};
 +
 +&i2c1 {
@@ -313,9 +221,8 @@ index 00000000000..2fd51e35387
 +		regulators {
 +			vdd_logic: DCDC_REG1 {
 +				regulator-name = "vdd_logic";
-+				regulator-min-microvolt = <1150000>;
-+				regulator-max-microvolt = <1175000>;
-+				regulator-ramp-delay    = <12500>;
++				regulator-min-microvolt = <712500>;
++				regulator-max-microvolt = <1450000>;
 +				regulator-always-on;
 +				regulator-boot-on;
 +				regulator-state-mem {
@@ -326,9 +233,8 @@ index 00000000000..2fd51e35387
 +
 +			vdd_arm: DCDC_REG2 {
 +				regulator-name = "vdd_arm";
-+				regulator-min-microvolt = <950000>;
++				regulator-min-microvolt = <712500>;
 +				regulator-max-microvolt = <1450000>;
-+				regulator-ramp-delay    = <12500>;
 +				regulator-always-on;
 +				regulator-boot-on;
 +				regulator-state-mem {
@@ -397,12 +303,12 @@ index 00000000000..2fd51e35387
 +	};
 +};
 +
-+&i2s1 {
++&i2s0 {
 +	status = "okay";
 +};
 +
-+&pwm3 {
-+	interrupts = <GIC_SPI 50 IRQ_TYPE_LEVEL_HIGH>;
++&i2s1 {
++	status = "okay";
 +};
 +
 +&io_domains {
@@ -418,57 +324,15 @@ index 00000000000..2fd51e35387
 +};
 +
 +&pinctrl {
-+	pinctrl-names = "default";
-+	pinctrl-0 = <&rtc_32k>;
-+
-+	rtc: rtc {
-+		rtc_32k: rtc-32k {
-+			rockchip,pins = <1 RK_PD4 1 &pcfg_pull_none>;
-+		};
-+	};
-+
 +	pmic {
 +		pmic_int_l: pmic-int-l {
-+			rockchip,pins = <2 RK_PA6 RK_FUNC_GPIO &pcfg_pull_up>;
++			rockchip,pins = <1 RK_PD0 RK_FUNC_GPIO &pcfg_pull_up>;
 +		};
 +	};
 +
 +	usb2 {
 +		usb20_host_drv: usb20-host-drv {
-+			rockchip,pins = <0 RK_PA2 RK_FUNC_GPIO &pcfg_pull_none>;
-+		};
-+	};
-+
-+	sd {
-+		sdio_vcc_pin: sdio-vcc-pin {
-+			rockchip,pins = <2 RK_PC4 RK_FUNC_GPIO &pcfg_pull_up>;
-+		};
-+	};
-+
-+
-+	sdio_pwrseq: sdio-pwrseq {
-+
-+		wifi_enable_h: wifi-enable-h {
-+			rockchip,pins = <1 RK_PC2 RK_FUNC_GPIO &pcfg_pull_none>;
-+		};
-+	};
-+
-+	wireless_wlan_pin: wireless-wlan {
-+
-+		wifi_wake_host: wifi-wake-host {
-+			rockchip,pins = <1 RK_PC3 RK_FUNC_GPIO &pcfg_pull_down>;
-+		};
-+	};
-+
-+	hdmi_pin {
-+		hdmi_backlight: hdmi-backlight {
-+			rockchip,pins = <3 RK_PA5 RK_FUNC_GPIO &pcfg_output_high>;
-+		};
-+	};
-+
-+	spi0_cs2 {
-+		pinctrl_spi0_cs2: pinctrl_spi0_cs2 {
-+			rockchip,pins = <3 RK_PA7 RK_FUNC_GPIO &pcfg_pull_up>;
++			rockchip,pins = <1 RK_PD2 RK_FUNC_GPIO &pcfg_pull_none>;
 +		};
 +	};
 +};
@@ -490,16 +354,7 @@ index 00000000000..2fd51e35387
 +	status = "okay";
 +};
 +
-+&spdif {
-+	pinctrl-0 = <&spdifm0_tx>;
-+	status = "disabled";
-+};
-+
-+
-+
 +&tsadc {
-+	rockchip,hw-tshut-mode = <0>;     /* tshut mode 0:CRU 1:GPIO */
-+	rockchip,hw-tshut-polarity = <0>; /* tshut polarity 0:LOW 1:HIGH */
 +	status = "okay";
 +};
 +
@@ -515,41 +370,8 @@ index 00000000000..2fd51e35387
 +	status = "okay";
 +};
 +
-+&uart0 {
-+	pinctrl-0 = <&uart0_xfer &uart0_cts>;
-+	status = "okay";
-+};
-+
 +&uart2 {
 +	status = "okay";
-+};
-+
-+&spi0 {
-+	max-freq = <48000000>;
-+	cs-gpios = <&gpio3 RK_PA7 GPIO_ACTIVE_LOW>;
-+	pinctrl-0 = <&spi0m2_clk &spi0m2_tx &spi0m2_rx>;
-+	status = "okay";
-+
-+
-+	spi_for_cs2@0 {
-+		reg = <0>;
-+		compatible ="armbian,spi-dev";
-+		pinctrl-names ="default";
-+		pinctrl-0 = <&pinctrl_spi0_cs2>;
-+		spi-max-frequency = <5000000>;
-+		status = "okay";
-+	};
-+};
-+
-+&sdio {
-+	pinctrl-names = "default";
-+	pinctrl-0 = <&sdmmc1_bus4 &sdmmc1_cmd &sdmmc1_clk>;
-+	mmc-pwrseq = <&sdio_pwrseq0>;
-+	status = "okay";
-+	non-removable;
-+	bus-width = <0x04>;
-+	cap-sd-highspeed;
-+	cap-sdio-irq;
 +};
 +
 +&usb20_otg {
@@ -563,29 +385,20 @@ index 00000000000..2fd51e35387
 +};
 +
 +&usb_host0_ehci {
-+	bootph-all;
 +	status = "okay";
 +};
 +
 +&usb_host0_ohci {
-+	bootph-all;
 +	status = "okay";
 +};
 +
 +&vop {
-+	assigned-clocks = <&cru DCLK_LCDC>;
-+	assigned-clock-parents = <&cru HDMIPHY>;
 +	status = "okay";
 +};
 +
 +&vop_mmu {
 +	status = "okay";
 +};
-+
-+&vpu {
-+	status = "disabled";
-+};
-+
 -- 
 Created with Armbian build tools https://github.com/armbian/build
 

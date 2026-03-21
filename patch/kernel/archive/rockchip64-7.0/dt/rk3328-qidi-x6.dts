@@ -10,8 +10,8 @@
 #include "rk3328.dtsi"
 
 / {
-	model = "Makerbase MKS-PI";
-	compatible = "mks,rk3328-mkspi", "rockchip,rk3328";
+	model = "Qidi X-6";
+	compatible = "mks,rk3328-qidi-x6", "rockchip,rk3328";
 
 	aliases {
 		mmc0 = &sdmmc;
@@ -147,26 +147,6 @@
 		regulator-boot-on;
 	};
 
-	leds {
-		compatible = "gpio-leds";
-
-		power_led: led-0 {
-			label = "firefly:blue:power";
-			linux,default-trigger = "heartbeat";
-			gpios = <&rk805 1 GPIO_ACTIVE_LOW>;
-			default-state = "on";
-			mode = <0x23>;
-		};
-
-		user_led: led-1 {
-			label = "firefly:yellow:user";
-			linux,default-trigger = "mmc1";
-			gpios = <&rk805 0 GPIO_ACTIVE_LOW>;
-			default-state = "off";
-			mode = <0x05>;
-		};
-	};
-
 	usb3phy_grf: syscon@ff460000 {
 		compatible = "rockchip,usb3phy-grf", "syscon";
 		reg = <0x0 0xff460000 0x0 0x1000>;
@@ -223,7 +203,7 @@
 	assigned-clock-rate = <50000000>;
 	assigned-clock-parents = <&cru SCLK_MAC2PHY_SRC>;
 	phy-supply = <&vcc_phy>;
- 	status = "okay";
+	status = "okay";
 };
 
 &dfi {
@@ -267,6 +247,7 @@
 	status = "okay";
 };
 
+/* gmac2io must be disabled for SPI0 CS2 to funcion */
 &gmac2io {
 	assigned-clocks = <&cru SCLK_MAC2IO>, <&cru SCLK_MAC2IO_EXT>;
 	assigned-clock-parents = <&gmac_clkin>, <&gmac_clkin>;
@@ -309,7 +290,7 @@
 };
 
 &hdmi_sound {
-	status = "okay";
+	status = "disabled";
 };
 
 &i2c1 {
@@ -467,14 +448,14 @@
 	lcd {
 		pinctrl_st7796_cs: pinctrl_st7796_cs {
 			rockchip,pins = <3 RK_PB0 RK_FUNC_GPIO &pcfg_pull_up>;
- 		};
- 	};
+		};
+	};
 
 	spi0_cs2 {
 		pinctrl_spi0_cs2: pinctrl_spi0_cs2 {
 			rockchip,pins = <1 RK_PC2 RK_FUNC_GPIO &pcfg_pull_up>;
- 		};
- 	};
+		};
+	};
 };
 
 &sdmmc {
@@ -504,7 +485,7 @@
 };
 
 &spdif_sound {
- 	status = "okay";
+	status = "disabled";
 };
 
 &tsadc {
@@ -527,68 +508,15 @@
 
 &uart0 {
 	pinctrl-0 = <&uart0_xfer &uart0_cts>;
- 	status = "okay";
+	status = "okay";
+};
+
+&uart1 {
+	status = "okay";
 };
 
 &uart2 {
 	status = "okay";
-};
-
-&spi0 {
-	max-freq = <48000000>;
-	cs-gpios = <&gpio3 RK_PB0 GPIO_ACTIVE_LOW>,<&gpio3 RK_PA7 GPIO_ACTIVE_LOW>,<&gpio1 RK_PC2 GPIO_ACTIVE_LOW>;
-	pinctrl-0 = <&spi0m2_clk &spi0m2_tx &spi0m2_rx>;
-	status = "okay";
-
-	spi_for_lcd@0 {
-		compatible ="ilitek,st7796";
-		pinctrl-names ="default";
-		pinctrl-0 = <&pinctrl_st7796_cs>;
-		reg = <0>;
-		spi-max-frequency = <25000000>;
-		bgr;
-		fps = <30>;
-		rotate = <270>;
-		buswidth = <8>;
-		dc-gpios = <&gpio3 RK_PA6 GPIO_ACTIVE_HIGH>;  /* gpio3 A6 */
-		reset-gpios = <&gpio3 RK_PA4 GPIO_ACTIVE_LOW>; /* gpio3 A4 */
-		led-gpios = <&gpio3 RK_PA5 GPIO_ACTIVE_HIGH>;  /* gpio3 A5 */
-		status = "okay";
-	};
-
-	spi_for_touch@1 {
-		reg = <1>;
-		compatible = "ti,tsc2046";
-		pinctrl-names ="default";
-		pinctrl-0 = <&pinctrl_tsc2046_pendown &pinctrl_tsc2046_cs>;
-		ti,x-max = /bits/ 16 <3776>;
-		ti,x-min = /bits/ 16 <164>;
-		ti,y-min = /bits/ 16 <201>;
-		ti,y-max = /bits/ 16 <3919>;
-		ti,x-plate-ohms = /bits/ 16 <40>;
-		ti,pressure-max = /bits/ 16 <255>;
-		//touchscreen-fuzz-x = <16>;
-		//touchscreen-fuzz-y = <16>;
-		//touchscreen-fuzz-pressure = <10>;
-		ti,swap-xy = <1>;
-		touchscreen-inverted-y = <1>;
-		interrupt-parent = <&gpio1>;
-		interrupts = <RK_PC6 GPIO_ACTIVE_LOW>;
-		spi-max-frequency = <2000000>;
-		pendown-gpio = <&gpio1 RK_PC6 GPIO_ACTIVE_LOW>;
-		vcc-supply = <&vcc_io>;
-		wakeup-source;
-		status = "okay";
-	};
-
-	spi_for_cs2@2 {
-		reg = <2>;
-		compatible ="armbian,spi-dev";
-		pinctrl-names ="default";
-		pinctrl-0 = <&pinctrl_spi0_cs2>;
-		spi-max-frequency = <5000000>;
-		status = "okay";
-	};
 };
 
 &usb20_otg {
