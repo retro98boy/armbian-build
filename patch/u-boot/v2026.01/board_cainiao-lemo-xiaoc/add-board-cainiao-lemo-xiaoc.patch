@@ -24,7 +24,7 @@ index 00000000..847bafac
 +obj-y	:= lemo-xiaoc.o
 diff --git a/board/amlogic/lemo-xiaoc/lemo-xiaoc.c b/board/amlogic/lemo-xiaoc/lemo-xiaoc.c
 new file mode 100644
-index 00000000..3875f390
+index 00000000..20314c53
 --- /dev/null
 +++ b/board/amlogic/lemo-xiaoc/lemo-xiaoc.c
 @@ -0,0 +1,182 @@
@@ -163,7 +163,7 @@ index 00000000..3875f390
 +	printf("\nButton released safely. Proceeding...\n");
 +}
 +
-+static void enable_usb_regulators(void)
++static void enable_regulators(void)
 +{
 +	struct udevice *dev = NULL;
 +	int rc = -1;
@@ -193,7 +193,7 @@ index 00000000..3875f390
 +
 +int meson_board_late_init(void)
 +{
-+	enable_usb_regulators();
++	enable_regulators();
 +
 +#if defined(CONFIG_WATCHDOG)
 +	printf("Watchdog set, skip USB boot detection.\n");
