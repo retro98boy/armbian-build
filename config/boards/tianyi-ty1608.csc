@@ -1,6 +1,6 @@
-# Amlogic S905L3-B 1GB RAM 8GB eMMC microSD FE USB2 MT7688RSN WiFi
+# Amlogic S905L3-B (gxlx2) 1GB RAM 8GB eMMC microSD FE USB2 MT7688RSN WiFi
 BOARD_NAME="Tianyi TY1608"
-BOARD_VENDOR="amlogic"
+BOARD_VENDOR="tianyi"
 BOARDFAMILY="meson-gxl"
 BOARD_MAINTAINER="retro98boy"
 BOOTCONFIG="tianyi-ty1608_defconfig"
