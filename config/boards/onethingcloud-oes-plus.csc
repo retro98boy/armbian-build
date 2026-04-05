@@ -8,47 +8,38 @@ BOOTSIZE="256"
 BOOTFS_TYPE="fat"
 KERNEL_TARGET="current,edge"
 KERNEL_TEST_TARGET="current"
+MODULES_BLACKLIST="simpledrm" # SimpleDRM conflicts with Panfrost on the OneThing Cloud OES Plus
 FULL_DESKTOP="no"
 SERIALCON="ttyAML0"
 BOOT_FDT_FILE="amlogic/meson-g12b-s922x-oes-plus.dtb"
 PACKAGE_LIST_BOARD="libubootenv-tool ttyd"
 
+enable_extension "amlogic-fip-blobs"
+
 function post_family_config__onethingcloud-oes-plus() {
-	display_alert "$BOARD" "Use vendor U-Boot to boot the kernel" "info"
+	declare -g BOOTSCRIPT="boot-cainiao-xiaoyi-pro.cmd:boot.cmd"
+	declare -g UBOOT_TARGET_MAP="DDR_ENC.USB env-autobootcmd reserved-min-ept"
 
-	unset BOOTSOURCE
-	declare -g BOOTCONFIG="none"
-	declare -g BOOTSCRIPT="boot-onethingcloud-oes.cmd:boot.cmd"
-
-	unset post_build_image_modify
-	post_build_image_modify() {
-		local IMAGE=${1}
-		BLOBS_DIR="${SRC}/cache/sources/onethingcloud-oes-plus"
-
-		display_alert "${BOARD}" "Installing the vendor FIP with secure boot enabled to sdcard.img" "info"
-
-		dd if="${BLOBS_DIR}/fip" of="$IMAGE" bs=512 seek=1 conv=fsync,notrunc 2>&1
-		dd if="${BLOBS_DIR}/env-main" of="$IMAGE" bs=1MiB seek=4 conv=fsync,notrunc 2>&1 # Vendor U-Boot env with autoboot cmd
-		dd if="${BLOBS_DIR}/reserved" of="$IMAGE" bs=1MiB seek=36 conv=fsync,notrunc 2>&1 # Contain EPT
+	unset write_uboot_platform
+	function write_uboot_platform() {
+		dd if="$1/DDR_ENC.USB" of="$2" bs=512 seek=1 conv=fsync,notrunc 2>&1
+		dd if="$1/env-autobootcmd" of="$2" bs=1MiB seek=4 conv=fsync,notrunc 2>&1
+		dd if="$1/reserved-min-ept" of="$2" bs=1MiB seek=36 conv=fsync,notrunc 2>&1
 	}
-
-	unset ASOUND_STATE
 }
 
 function post_family_tweaks__onethingcloud-oes-plus() {
-	fetch_from_repo "https://github.com/retro98boy/onethingcloud-oes-linux.git" "onethingcloud-oes-plus" "commit:72257910e84ee609df00f0ed57b0ecd9a9818389"
-	BLOBS_DIR="${SRC}/cache/sources/onethingcloud-oes-plus"
-
 	display_alert "${BOARD}" "Installing the aml_autoscript to set U-Boot autoboot cmd on first startup" "info"
 
-	install -Dm755 "${BLOBS_DIR}/aml_autoscript.cmd" "${SDCARD}/boot/aml_autoscript.cmd"
-	install -Dm755 "${BLOBS_DIR}/aml_autoscript" "${SDCARD}/boot/aml_autoscript" # Vendor U-Boot will try to load it
+	install -Dm755 "${SRC}/cache/sources/amlogic-fip-blobs/onethingcloud-oes-plus/aml_autoscript.cmd" "${SDCARD}/boot/aml_autoscript.cmd"
+	install -Dm755 "${SRC}/cache/sources/amlogic-fip-blobs/onethingcloud-oes-plus/aml_autoscript" "${SDCARD}/boot/aml_autoscript" # Vendor U-Boot will try to load it
 
 	display_alert "${BOARD}" "Installing U-Boot env setting" "info"
 
 	cat <<- EOF > "${SDCARD}/etc/fw_env.config"
 		# stock EPT
 		# /dev/mmcblk1 0x27400000 0x10000 0x27410000 0x10000
+		# min EPT
 		/dev/mmcblk1 0x400000 0x10000 0x410000 0x10000
 	EOF
 
@@ -71,4 +62,15 @@ function post_family_tweaks__onethingcloud-oes-plus() {
 			https://github.com/retro98boy/onethingcloud-oes-linux
 		TEXT
 	EOF
+}
+
+function build_custom_uboot__onethingcloud-oes-plus() {
+	display_alert "${BOARD}" "Use vendor U-Boot binary with Secure Boot enabled" "info"
+
+	cp "${SRC}/cache/sources/amlogic-fip-blobs/onethingcloud-oes-plus/DDR_ENC.USB" .
+	cp "${SRC}/cache/sources/amlogic-fip-blobs/onethingcloud-oes-plus/env-autobootcmd" .
+	cp "${SRC}/cache/sources/amlogic-fip-blobs/onethingcloud-oes-plus/reserved-min-ept" .
+
+	loop_over_uboot_targets_and_do deploy_built_uboot_bins_for_one_target_to_packaging_area
+	declare -g EXTENSION_BUILT_UBOOT=yes
 }
