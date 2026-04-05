@@ -1,6 +1,7 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Chen-Yu Tsai <wenst@chromium.org>
 Date: Wed, 11 Mar 2026 17:49:26 +0800
-Subject: [PATCH] drm/gem-dma: Support dedicated DMA device for allocation and mapping
+Subject: drm/gem-dma: Support dedicated DMA device for allocation and mapping
 
 Support for a dedicated DMA device for prime imports was added in commit
 143ec8d3f939 ("drm/prime: Support dedicated DMA device for dma-buf imports").
@@ -24,11 +25,15 @@ users should be affected.
 Reviewed-by: Thomas Zimmermann <tzimmermann@suse.de>
 Signed-off-by: Chen-Yu Tsai <wenst@chromium.org>
 Reviewed-by: AngeloGioacchino Del Regno <angelogioacchino.delregno@collabora.com>
+---
+ drivers/gpu/drm/drm_gem_dma_helper.c | 21 ++++++----
+ 1 file changed, 12 insertions(+), 9 deletions(-)
+
 diff --git a/drivers/gpu/drm/drm_gem_dma_helper.c b/drivers/gpu/drm/drm_gem_dma_helper.c
-index ecb9746f4da8..70f83e464476 100644
+index 111111111111..222222222222 100644
 --- a/drivers/gpu/drm/drm_gem_dma_helper.c
 +++ b/drivers/gpu/drm/drm_gem_dma_helper.c
-@@ -146,12 +146,13 @@ struct drm_gem_dma_object *drm_gem_dma_create(struct drm_device *drm,
+@@ -144,12 +144,13 @@ struct drm_gem_dma_object *drm_gem_dma_create(struct drm_device *drm,
  		return dma_obj;
  
  	if (dma_obj->map_noncoherent) {
@@ -44,7 +49,7 @@ index ecb9746f4da8..70f83e464476 100644
  					      &dma_obj->dma_addr,
  					      GFP_KERNEL | __GFP_NOWARN);
  	}
-@@ -236,12 +237,14 @@ void drm_gem_dma_free(struct drm_gem_dma_object *dma_obj)
+@@ -234,12 +235,14 @@ void drm_gem_dma_free(struct drm_gem_dma_object *dma_obj)
  		drm_prime_gem_destroy(gem_obj, dma_obj->sgt);
  	} else if (dma_obj->vaddr) {
  		if (dma_obj->map_noncoherent)
@@ -62,7 +67,7 @@ index ecb9746f4da8..70f83e464476 100644
  	}
  
  	drm_gem_object_release(gem_obj);
-@@ -432,7 +435,7 @@ struct sg_table *drm_gem_dma_get_sg_table(struct drm_gem_dma_object *dma_obj)
+@@ -428,7 +431,7 @@ struct sg_table *drm_gem_dma_get_sg_table(struct drm_gem_dma_object *dma_obj)
  	if (!sgt)
  		return ERR_PTR(-ENOMEM);
  
@@ -71,7 +76,7 @@ index ecb9746f4da8..70f83e464476 100644
  			      dma_obj->dma_addr, obj->size);
  	if (ret < 0)
  		goto out;
-@@ -539,12 +542,12 @@ int drm_gem_dma_mmap(struct drm_gem_dma_object *dma_obj, struct vm_area_struct *
+@@ -535,12 +538,12 @@ int drm_gem_dma_mmap(struct drm_gem_dma_object *dma_obj, struct vm_area_struct *
  	if (dma_obj->map_noncoherent) {
  		vma->vm_page_prot = vm_get_page_prot(vma->vm_flags);
  
@@ -88,5 +93,5 @@ index ecb9746f4da8..70f83e464476 100644
  	}
  	if (ret)
 -- 
-2.53.0.473.g4a7958ca14-goog
+Armbian
 
