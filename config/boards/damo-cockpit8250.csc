@@ -2,6 +2,7 @@
 declare -g BOARD_NAME="DAMO Cockpit8250"
 declare -g BOARD_VENDOR="alibaba"
 declare -g BOARD_MAINTAINER="retro98boy"
+declare -g INTRODUCED="2025"
 declare -g BOARDFAMILY="sm8250"
 declare -g KERNEL_TARGET="current,edge"
 declare -g KERNEL_TEST_TARGET="current"

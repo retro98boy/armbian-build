@@ -3,6 +3,7 @@ BOARD_NAME="CAINIAO XiaoYi Pro"
 BOARD_VENDOR="cainiao"
 BOARDFAMILY="meson-g12b"
 BOARD_MAINTAINER="retro98boy"
+INTRODUCED="2026"
 OFFSET="100" # Reserved for the EPT and vendor U-Boot env
 BOOTSIZE="256"
 BOOTFS_TYPE="fat"

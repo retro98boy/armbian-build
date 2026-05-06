@@ -6,6 +6,7 @@ KERNEL_TARGET="legacy"
 MODULES_BLACKLIST="iv009_isp iv009_isp_sensor iv009_isp_lens iv009_isp_iq"
 PACKAGE_LIST_BOARD="alsa-ucm-conf" # Contain ALSA UCM top-level configuration file
 BOARD_MAINTAINER="retro98boy"
+INTRODUCED="2025"
 SERIALCON="ttyS0" # for vendor kernel
 # BOOT_FDT_FILE="amlogic/t7-a311d2-tvpro-8g.dtb" # not set on purpose; u-boot auto-selects fdt file
 

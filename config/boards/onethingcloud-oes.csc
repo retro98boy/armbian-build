@@ -3,6 +3,7 @@ BOARD_NAME="OneThing Cloud OES"
 BOARD_VENDOR="onethingcloud"
 BOARDFAMILY="meson-g12b"
 BOARD_MAINTAINER="retro98boy"
+INTRODUCED="2025"
 OFFSET="100" # Reserved for the EPT and vendor U-Boot env
 BOOTSIZE="256"
 BOOTFS_TYPE="fat"
