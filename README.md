@@ -14,6 +14,7 @@
 | OneThing Cloud OES Plus   | 本仓库      | 持有        | vendor U-Boot (secure boot)              |
 | SMART AM40                | 已提交上游   | 持有        | mainline U-Boot                          |
 | NORCO EMB-3531            | 已提交上游   | 持有        | mainline U-Boot                          |
+| Xerox ET1020              | 本仓库      | 持有         | mainline U-Boot                          |
 | TIANNUO TN3399_V3         | 本仓库      | 不再持有      | mainline U-Boot                         |
 
 # 下载
