@@ -155,8 +155,27 @@ function docker_cli_prepare() {
 	fi
 
 	#############################################################################################################
-	# Cleanup old Docker images to free disk space
-	docker_cleanup_old_images
+	# Optionally clean up old Docker images to free disk space. Off by
+	# default — set DOCKER_PRUNE=yes to opt in.
+	#
+	# The cleanup enumerates `docker images` and calls `docker rmi` on
+	# "old" ones. On hosts where several build invocations share one
+	# dockerd (the usual setup when multiple self-hosted GH Actions
+	# runners live on the same machine) two concurrent invocations
+	# race: runner A's cleanup can rmi an image runner B just
+	# committed between `Successfully built <sha>` and the daemon
+	# writing the imagedb digest file, surfacing as:
+	#   failed to get digest sha256:…: open …/imagedb/content/sha256/…:
+	#   no such file or directory
+	# which aborts runner B's build. Default-off keeps shared-daemon
+	# setups safe; single-host users who want automatic reclaim set
+	# DOCKER_PRUNE=yes and either accept the race risk or run builds
+	# serially.
+	if [[ "${DOCKER_PRUNE:-no}" == "yes" ]]; then
+		docker_cleanup_old_images
+	else
+		display_alert "Skipping Docker image cleanup" "set DOCKER_PRUNE=yes to enable" "debug"
+	fi
 
 	#############################################################################################################
 	# Detect some docker info; use cached.
@@ -381,7 +400,6 @@ function docker_cli_prepare_launch() {
 	declare -g -a DOCKER_ARGS=(
 		"--rm" # side effect - named volumes are considered not attached to anything and are removed on "docker volume prune", since container was removed.
 
-		"--privileged"         # Yep. Armbian needs /dev/loop access, device access, etc. Don't even bother trying without it.
 		"--cap-add=SYS_ADMIN"  # add only required capabilities instead
 		"--cap-add=MKNOD"      # (though MKNOD should be already present)
 		"--cap-add=SYS_PTRACE" # CAP_SYS_PTRACE is required for systemd-detect-virt in some cases @TODO: rpardini: so lets eliminate it @TODO: rpardini maybe it's dead already?
@@ -430,6 +448,16 @@ function docker_cli_prepare_launch() {
 		"--env" "HTTPS_PROXY=${HTTPS_PROXY}"
 		"--env" "APT_PROXY_ADDR=${APT_PROXY_ADDR}"
 	)
+
+	# DOCKER_PRIVILEGED=no switches to a narrow capability set.
+	if [[ "${DOCKER_PRIVILEGED:-yes}" == "yes" ]]; then
+		DOCKER_ARGS+=("--privileged")
+	else
+		DOCKER_ARGS+=(
+			"--device=/dev/loop-control:/dev/loop-control"
+			"--security-opt=seccomp=unconfined"
+		)
+	fi
 
 	# This env var is used super early (in entrypoint.sh), so set it as an env to current value.
 	if [[ "${DOCKER_ARMBIAN_ENABLE_CALL_TRACING:-no}" == "yes" ]]; then

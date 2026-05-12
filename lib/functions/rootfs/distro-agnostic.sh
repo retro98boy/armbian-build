@@ -406,14 +406,6 @@ function install_distribution_agnostic() {
 	# install board support packages
 	install_artifact_deb_chroot "armbian-bsp-cli"
 
-	# install armbian-desktop
-	if [[ $BUILD_DESKTOP == yes ]]; then
-		install_artifact_deb_chroot "armbian-desktop"
-		install_artifact_deb_chroot "armbian-bsp-desktop"
-		# install display manager and PACKAGE_LIST_DESKTOP_FULL packages if enabled per board
-		desktop_postinstall
-	fi
-
 	# install armbian-zsh
 	if [[ "${PACKAGE_LIST_RM}" != *armbian-zsh* ]]; then
 		if [[ $BUILD_MINIMAL != yes ]]; then
@@ -425,7 +417,7 @@ function install_distribution_agnostic() {
 	if [[ $PLYMOUTH == yes ]]; then
 		install_artifact_deb_chroot "armbian-plymouth-theme"
 	else
-		chroot_sdcard_apt_get_remove --auto-remove plymouth
+		chroot_sdcard_apt_get_remove --auto-remove plymouth 2>/dev/null || true
 	fi
 
 	# freeze armbian packages
