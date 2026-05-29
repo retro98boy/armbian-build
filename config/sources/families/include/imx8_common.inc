@@ -23,7 +23,7 @@ UBOOT_TARGET_MAP="flash.bin;;flash.bin"
 # linux releated
 case $BOARD in
 
-	mba8mpxl*)
+	mba8mpxl* | tq-smarc2-*)
 		LINUXCONFIG='linux-tqma-'$BRANCH # one config for "tq arm modules"
 		case $BRANCH in
 
@@ -31,7 +31,8 @@ case $BOARD in
 				KERNEL_MAJOR_MINOR="6.18"
 				;;
 
-			edge | default) # use for tests with recent mainline kernels
+			edge) # linux 7.1 RC
+				KERNEL_MAJOR_MINOR="7.1"
 				;;
 
 		esac
