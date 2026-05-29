@@ -1,0 +1,48 @@
+From e332780c824e8ece15a49363c03856361b275df5 Mon Sep 17 00:00:00 2001
+From: retro98boy <retro98boy@qq.com>
+Date: Sun, 31 May 2026 14:30:43 +0800
+Subject: [PATCH] dw-hdmi-qp: get ddc i2c bus from fdt
+
+---
+ drivers/gpu/drm/bridge/synopsys/dw-hdmi-qp.c | 18 +++++++++++++++---
+ 1 file changed, 15 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/gpu/drm/bridge/synopsys/dw-hdmi-qp.c b/drivers/gpu/drm/bridge/synopsys/dw-hdmi-qp.c
+index 39332c57f..b2e773e0e 100644
+--- a/drivers/gpu/drm/bridge/synopsys/dw-hdmi-qp.c
++++ b/drivers/gpu/drm/bridge/synopsys/dw-hdmi-qp.c
+@@ -1036,6 +1036,7 @@ struct dw_hdmi_qp *dw_hdmi_qp_bind(struct platform_device *pdev,
+ 				   const struct dw_hdmi_qp_plat_data *plat_data)
+ {
+ 	struct device *dev = &pdev->dev;
++	struct device_node *ddc_node;
+ 	struct dw_hdmi_qp *hdmi;
+ 	void __iomem *regs;
+ 	int ret;
+@@ -1085,9 +1086,20 @@ struct dw_hdmi_qp *dw_hdmi_qp_bind(struct platform_device *pdev,
+ 	hdmi->bridge.vendor = "Synopsys";
+ 	hdmi->bridge.product = "DW HDMI QP TX";
+ 
+-	hdmi->bridge.ddc = dw_hdmi_qp_i2c_adapter(hdmi);
+-	if (IS_ERR(hdmi->bridge.ddc))
+-		return ERR_CAST(hdmi->bridge.ddc);
++	ddc_node = of_parse_phandle(dev->of_node, "ddc-i2c-bus", 0);
++	if (ddc_node) {
++		hdmi->bridge.ddc = of_get_i2c_adapter_by_node(ddc_node);
++		of_node_put(ddc_node);
++		if (!(hdmi->bridge.ddc)) {
++			dev_dbg(hdmi->dev, "failed to read ddc node\n");
++			return ERR_PTR(-EPROBE_DEFER);
++		}
++	} else {
++		dev_dbg(hdmi->dev, "no ddc property found\n");
++		hdmi->bridge.ddc = dw_hdmi_qp_i2c_adapter(hdmi);
++		if (IS_ERR(hdmi->bridge.ddc))
++			return ERR_CAST(hdmi->bridge.ddc);
++	}
+ 
+ 	hdmi->bridge.hdmi_audio_max_i2s_playback_channels = 8;
+ 	hdmi->bridge.hdmi_audio_dev = dev;
+-- 
+2.54.0
+

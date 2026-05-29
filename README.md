@@ -7,6 +7,7 @@
 | CAINIAO LEMO XIAOC        | 本仓库      | 不再持有    | mainline U-Boot                          |
 | CAINIAO XiaoYi Pro        | 本仓库      | 持有        | vendor U-Boot (secure boot)              |
 | GOODMOBI A02              | 本仓库      | 持有        | mainline U-Boot                          |
+| Elo Backpack5 RK3588S     | 本仓库      | 持有        | mainline U-Boot                          |
 | DAMO Cockpit8250          | 本仓库      | 持有        | XBL/ABL or U-Boot/GRUB                   |
 | CoreLab TVPro T7 8G Version      | 本仓库      | 持有         | compile from retro98boy/coreelec-u-boot |
 | AOC 65T33Z T7 4G Version  | 本仓库      | 持有         | compile from retro98boy/coreelec-u-boot |
