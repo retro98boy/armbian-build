@@ -32,7 +32,7 @@ index 51187b1e0..be1748bc6 100644
  				RT5645_DIG_GATE_CTRL, RT5645_DIG_GATE_CTRL);
  		}
 +		if (!IS_ERR(rt5645->mclk)){
-+			if (snd_soc_component_get_bias_level(component) == SND_SOC_BIAS_ON) {
++			if (snd_soc_dapm_get_bias_level(dapm) == SND_SOC_BIAS_ON) {
 +				clk_disable_unprepare(rt5645->mclk);
 +			} else {
 +				clk_prepare_enable(rt5645->mclk);
