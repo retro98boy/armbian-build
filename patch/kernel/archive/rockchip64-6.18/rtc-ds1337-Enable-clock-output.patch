@@ -1,0 +1,50 @@
+From 5cabf198092e9378bde2a3a5382530c150c4428a Mon Sep 17 00:00:00 2001
+From: retro98boy <retro98boy@qq.com>
+Date: Tue, 9 Jun 2026 20:02:41 +0800
+Subject: [PATCH] rtc: ds1337: Enable clock output
+
+---
+ drivers/rtc/rtc-ds1307.c | 13 ++++++++++++-
+ 1 file changed, 12 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/rtc/rtc-ds1307.c b/drivers/rtc/rtc-ds1307.c
+index 7205c59ff..dffc0a404 100644
+--- a/drivers/rtc/rtc-ds1307.c
++++ b/drivers/rtc/rtc-ds1307.c
+@@ -1633,6 +1633,16 @@ static int ds3231_clks_register(struct ds1307 *ds1307)
+ 					  ds3231_clks_names,
+ 					  ARRAY_SIZE(ds3231_clks_names));
+ 
++	if (ds1307->type == ds_1337) {
++		struct clk_init_data clk_init = ds3231_clks_init[0];
++		clk_init.name = ds3231_clks_names[0];
++		ds1307->clks[0].init = &clk_init;
++		onecell->clks[0] =
++			devm_clk_register(ds1307->dev, &ds1307->clks[0]);
++		if (IS_ERR(onecell->clks[0]))
++			return PTR_ERR(onecell->clks[0]);
++	}
++	else {
+ 	for (i = 0; i < ARRAY_SIZE(ds3231_clks_init); i++) {
+ 		struct clk_init_data init = ds3231_clks_init[i];
+ 
+@@ -1651,6 +1661,7 @@ static int ds3231_clks_register(struct ds1307 *ds1307)
+ 		if (IS_ERR(onecell->clks[i]))
+ 			return PTR_ERR(onecell->clks[i]);
+ 	}
++	}
+ 
+ 	if (node)
+ 		of_clk_add_provider(node, of_clk_src_onecell_get, onecell);
+@@ -1662,7 +1673,7 @@ static void ds1307_clks_register(struct ds1307 *ds1307)
+ {
+ 	int ret;
+ 
+-	if (ds1307->type != ds_3231)
++	if ((ds1307->type != ds_3231) && (ds1307->type != ds_1337))
+ 		return;
+ 
+ 	ret = ds3231_clks_register(ds1307);
+-- 
+2.54.0
+

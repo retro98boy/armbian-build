@@ -52,6 +52,19 @@
 		};
 	};
 
+	gpio-leds {
+		compatible = "gpio-leds";
+
+		pwr-led {
+			color = <LED_COLOR_ID_WHITE>;
+			default-state = "on";
+			function = LED_FUNCTION_POWER;
+			gpios = <&gpio1 RK_PB3 GPIO_ACTIVE_HIGH>;
+			pinctrl-names = "default";
+			pinctrl-0 = <&pwr_led_pin>;
+		};
+	};
+
 #ifdef GPIO_I2C_BASED_DDC
 	hdmi0_ddc: gpio-i2c {
 		compatible = "i2c-gpio";
@@ -77,23 +90,10 @@
 		};
 	};
 
-	leds {
-		compatible = "gpio-leds";
-
-		pwr-led {
-			color = <LED_COLOR_ID_WHITE>;
-			default-state = "on";
-			function = LED_FUNCTION_POWER;
-			gpios = <&gpio1 RK_PB3 GPIO_ACTIVE_HIGH>;
-			pinctrl-names = "default";
-			pinctrl-0 = <&pwr_led_pin>;
-		};
-	};
-
 	vcc3v3_pcie2x1l2: regulator-vcc3v3-pcie2x1l2 {
 		compatible = "regulator-fixed";
 		enable-active-high;
-		gpio = <&gpio0 RK_PC7 GPIO_ACTIVE_HIGH>;
+		gpio = <&gpio0 RK_PC7 GPIO_ACTIVE_HIGH>; /* WL_REG_ON */
 		pinctrl-names = "default";
 		pinctrl-0 = <&pow_en>;
 		regulator-name = "vcc3v3_pcie2x1l2";
@@ -351,6 +351,7 @@
 		compatible = "dallas,ds1337";
 		reg = <0x68>;
 		#clock-cells = <0>;
+		clock-frequency = <32768>;
 		clock-output-names = "rtcic_32kout";
 		interrupt-parent = <&gpio0>;
 		interrupts = <RK_PB0 IRQ_TYPE_LEVEL_LOW>;
@@ -438,10 +439,11 @@
 		device_type = "pci";
 		bus-range = <0x40 0x4f>;
 
+		/* WL_HOST_WAKE: gpio0 RK_PA0 */
 		wifi: wifi@0,0 {
 			compatible = "pci14e4,44a0"; /* 449d: AP6275P (BCM43752), 44a0: AP6276P (BCM43756) */
 			reg = <0x410000 0 0 0 0>;
-			clocks = <&pt7c4337>; /* Not sure */
+			clocks = <&pt7c4337>;
 			clock-names = "lpo";
 		};
 	};
@@ -976,7 +978,7 @@
 
 	bluetooth {
 		compatible = "brcm,bcm43438-bt"; /* Not sure */
-		clocks = <&pt7c4337>; /* Not sure */
+		clocks = <&pt7c4337>;
 		clock-names = "lpo";
 		interrupt-parent = <&gpio0>;
 		interrupts = <RK_PC5 IRQ_TYPE_LEVEL_HIGH>;
