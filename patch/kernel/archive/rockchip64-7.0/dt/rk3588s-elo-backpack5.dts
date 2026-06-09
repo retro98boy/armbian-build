@@ -235,7 +235,8 @@
 
 &gmac1 {
 	phy-handle = <&jl2101>;
-	phy-mode = "rgmii-id";
+	phy-mode = "rgmii-rxid";
+	tx_delay = <77>;
 	pinctrl-0 = <&gmac1_miim
 		     &gmac1_tx_bus2
 		     &gmac1_rx_bus2
@@ -380,6 +381,7 @@
 	accelerometer@19 {
 		compatible = "silan,sc7a20";
 		reg = <0x19>;
+		status = "disabled";
 	};
 };
 
@@ -458,8 +460,8 @@
 };
 
 &pinctrl {
-	display {
 #ifdef GPIO_I2C_BASED_DDC
+	display {
 		gpio_i2c_scl_pin: gpio-i2c-scl-pin {
 			rockchip,pins = <4 RK_PB7 RK_FUNC_GPIO &pcfg_pull_none>;
 		};
@@ -467,8 +469,8 @@
 		gpio_i2c_sda_pin: gpio-i2c-sda-pin {
 			rockchip,pins = <4 RK_PC0 RK_FUNC_GPIO &pcfg_pull_none>;
 		};
-#endif
 	};
+#endif
 
 	ethernet {
 		gmac1_rstn: gmac1-rstn {

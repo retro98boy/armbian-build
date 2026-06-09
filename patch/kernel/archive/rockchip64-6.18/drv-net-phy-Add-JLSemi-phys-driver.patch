@@ -1,20 +1,19 @@
-From 49a43f8d278bf7cdde46be98c90bea421f76bd2f Mon Sep 17 00:00:00 2001
-From: uniqfreq <flippy@sina.com>
-Date: Sun, 2 Feb 2025 23:36:16 +0800
+From 0c3c9a8bd9b86aee4bf10c6458371a82a9bf6a56 Mon Sep 17 00:00:00 2001
+From: retro98boy <retro98boy@qq.com>
+Date: Wed, 3 Jun 2026 09:20:01 +0800
 Subject: [PATCH] drv: net: phy: Add JLSemi phys driver
 
+https://github.com/CoreELEC/common_drivers/commit/305ebe3f2d9c9112298b909752ca017d1a19b55b
 ---
  drivers/net/phy/Kconfig                 |    5 +
  drivers/net/phy/Makefile                |    2 +
- drivers/net/phy/jlsemi-core.c           | 2667 +++++++++++++++++++++++
- drivers/net/phy/jlsemi-core.h           |  439 ++++
- drivers/net/phy/jlsemi-dt-phy.h         |  341 +++
- drivers/net/phy/jlsemi.c                |  577 +++++
- include/dt-bindings/phy/jlsemi-dt-phy.h |  341 +++
- 7 files changed, 4372 insertions(+)
+ drivers/net/phy/jlsemi-core.c           | 2909 +++++++++++++++++++++++
+ drivers/net/phy/jlsemi-core.h           |  457 ++++
+ drivers/net/phy/jlsemi.c                |  594 +++++
+ include/dt-bindings/phy/jlsemi-dt-phy.h |  349 +++
+ 6 files changed, 4316 insertions(+)
  create mode 100644 drivers/net/phy/jlsemi-core.c
  create mode 100644 drivers/net/phy/jlsemi-core.h
- create mode 100644 drivers/net/phy/jlsemi-dt-phy.h
  create mode 100644 drivers/net/phy/jlsemi.c
  create mode 100644 include/dt-bindings/phy/jlsemi-dt-phy.h
 
@@ -49,10 +48,10 @@ index 76e0db40f..59a08eadb 100644
  obj-$(CONFIG_LXT_PHY)		+= lxt.o
 diff --git a/drivers/net/phy/jlsemi-core.c b/drivers/net/phy/jlsemi-core.c
 new file mode 100644
-index 000000000..08e4ed651
+index 000000000..d30c7c6b8
 --- /dev/null
 +++ b/drivers/net/phy/jlsemi-core.c
-@@ -0,0 +1,2667 @@
+@@ -0,0 +1,2909 @@
 +// SPDX-License-Identifier: GPL-2.0+
 +/*
 + * Copyright (C) 2021 JLSemi Corporation
@@ -1286,7 +1285,7 @@ index 000000000..08e4ed651
 +	return 0;
 +}
 +
-+static int jl2xxx_downshift_static_op_set(struct phy_device *phydev)
++int jl2xxx_downshift_static_op_set(struct phy_device *phydev)
 +{
 +	struct jl2xxx_priv *priv = phydev->priv;
 +	int err;
@@ -1299,7 +1298,7 @@ index 000000000..08e4ed651
 +	return 0;
 +}
 +
-+static int jl2xxx_rgmii_static_op_set(struct phy_device *phydev)
++int jl2xxx_rgmii_static_op_set(struct phy_device *phydev)
 +{
 +	struct jl2xxx_priv *priv = phydev->priv;
 +	int err;
@@ -1340,7 +1339,7 @@ index 000000000..08e4ed651
 +	return 0;
 +}
 +
-+static int jl2xxx_clk_static_op_set(struct phy_device *phydev)
++int jl2xxx_clk_static_op_set(struct phy_device *phydev)
 +{
 +	struct jl2xxx_priv *priv = phydev->priv;
 +	int err;
@@ -1378,7 +1377,7 @@ index 000000000..08e4ed651
 +	return 0;
 +}
 +
-+static int jl2xxx_slew_rate_static_op_set(struct phy_device *phydev)
++int jl2xxx_slew_rate_static_op_set(struct phy_device *phydev)
 +{
 +	int err;
 +
@@ -1392,14 +1391,42 @@ index 000000000..08e4ed651
 +	return 0;
 +}
 +
-+static int jl2xxx_rxc_out_static_op_set(struct phy_device *phydev)
++int jl2xxx_rxc_out_static_op_set(struct phy_device *phydev)
 +{
++	struct jl2xxx_priv *priv = phydev->priv;
++	int mode;
 +	int err;
 +
++	/* fake power down */
 +	err = jlsemi_set_bits(phydev, JL2XXX_PAGE18,
 +			      JL2XXX_RXC_OUT_REG, JL2XXX_RXC_OUT);
 +	if (err < 0)
 +		return err;
++
++	mode = jlsemi_read_paged(phydev, JL2XXX_PAGE18, JL2XXX_WORK_MODE_REG);
++	/* Description: Some SOC Ethernet initialization requires PHY to
++	 * provide rx clock for MAC to pass initialization, otherwise DMA
++	 * initialization errors will be reported. However, when PHY is
++	 * set (MAC) sgmii<-->rgmii (PHY) mode, rx clock does not have a
++	 * clock.
++	 * Workaround: Configure PHY to utp<-->rgmii mode before Ethernet
++	 * initialization, and then configure it to sgmii<-->rgmii mode
++	 * after initialization is completed. The adverse effect is that
++	 * it will cause the link up time to become longer
++	 */
++	if (((priv->work_mode.enable & JL2XXX_WORK_MODE_STATIC_OP_EN) &&
++	   (priv->work_mode.mode == JL2XXX_MAC_SGMII_RGMII_MODE)) ||
++	   ((mode & JL2XXX_WORK_MODE_MASK) == JL2XXX_MAC_SGMII_RGMII_MODE)) {
++		err = jlsemi_modify_paged_reg(phydev, JL2XXX_PAGE18,
++					      JL2XXX_WORK_MODE_REG,
++					      JL2XXX_WORK_MODE_MASK,
++					      JL2XXX_UTP_RGMII_MODE);
++		if (err < 0)
++			return err;
++		/* Record the previous value */
++		priv->work_mode.mode = JL2XXX_MAC_SGMII_RGMII_MODE;
++		priv->rxc_out.inited = false;
++	}
 +
 +	err = jlsemi_soft_reset(phydev);
 +	if (err < 0)
@@ -1408,7 +1435,7 @@ index 000000000..08e4ed651
 +	return 0;
 +}
 +
-+static int jl2xxx_work_mode_static_op_set(struct phy_device *phydev)
++int jl2xxx_work_mode_static_op_set(struct phy_device *phydev)
 +{
 +	struct jl2xxx_priv *priv = phydev->priv;
 +	int err;
@@ -1573,7 +1600,7 @@ index 000000000..08e4ed651
 +	return 0;
 +}
 +
-+static int jl2xxx_lpbk_static_op_set(struct phy_device *phydev)
++int jl2xxx_lpbk_static_op_set(struct phy_device *phydev)
 +{
 +	struct jl2xxx_priv *priv = phydev->priv;
 +	int err;
@@ -1656,7 +1683,7 @@ index 000000000..08e4ed651
 +	return 0;
 +}
 +
-+static int jl1xxx_mdi_static_op_set(struct phy_device *phydev)
++int jl1xxx_mdi_static_op_set(struct phy_device *phydev)
 +{
 +	struct jl1xxx_priv *priv = phydev->priv;
 +	int err;
@@ -1681,7 +1708,7 @@ index 000000000..08e4ed651
 +	return 0;
 +}
 +
-+static int jl1xxx_rmii_static_op_set(struct phy_device *phydev)
++int jl1xxx_rmii_static_op_set(struct phy_device *phydev)
 +{
 +	struct jl1xxx_priv *priv = phydev->priv;
 +	int err;
@@ -1750,12 +1777,14 @@ index 000000000..08e4ed651
 +	return 0;
 +}
 +
-+static u16 patch_fw_versions0[] = {0x9101, 0x9107};
-+static u16 patch_fw_versions1[] = {0x1101};
-+static u16 patch_fw_versions2[] = {0x930a};
++static const u16 patch_fw_versions0[] = {0x9101, 0x9107};
++static const u16 patch_fw_versions1[] = {0x1101};
++static const u16 patch_fw_versions2[] = {0x930a};
++static const u16 patch_fw_versions3[] = {0x2208};
 +
-+static u16 patch_version0 = 0xdef2;
-+static u32 init_data0[] = {
++//static const u16 patch_version0 = 0xdef2;
++#define patch_version0  0xdef2
++static const u32 init_data0[] = {
 +	0x1f00a0, 0x1903f3, 0x1f0012, 0x150100, 0x1f00ad, 0x100000,
 +	0x11e0c6, 0x1f00a0, 0x1903fb, 0x1903fb, 0x1903fb, 0x1903fb,
 +	0x1903fb, 0x1903fb, 0x1903fb, 0x1903fb, 0x1f00ad, 0x110000,
@@ -1883,8 +1912,9 @@ index 000000000..08e4ed651
 +	0x170000, 0x180000, 0x110000, 0x120400, 0x104000, 0x1f0000,
 +};
 +
-+static u16 patch_version1 = 0x9f73;
-+static u32 init_data1[] = {
++//static const u16 patch_version1 = 0x9f73;
++#define patch_version1 0x9f73
++static const u32 init_data1[] = {
 +	0x1f00a0, 0x1903f3, 0x1f0012, 0x150100, 0x1f00ad, 0x100000,
 +	0x11e0c6, 0x1f00a0, 0x1903fb, 0x1903fb, 0x1903fb, 0x1903fb,
 +	0x1903fb, 0x1903fb, 0x1903fb, 0x1903fb, 0x1f00ad, 0x110000,
@@ -1956,8 +1986,9 @@ index 000000000..08e4ed651
 +	0x170000, 0x180000, 0x110000, 0x120400, 0x104000, 0x1f0000,
 +};
 +
-+static u16 patch_version2 = 0x2e9c;
-+static u32 init_data2[] = {
++//static const u16 patch_version2 = 0x2e9c;
++#define patch_version2 0x2e9c
++static const u32 init_data2[] = {
 +	0x1f00a0, 0x1903f3, 0x1f0012, 0x150100, 0x1f00ad, 0x100000,
 +	0x11e0c6, 0x1f0102, 0x199000, 0x1f00a0, 0x1903fb, 0x1903fb,
 +	0x1903fb, 0x1903fb, 0x1903fb, 0x1903fb, 0x1903fb, 0x1903fb,
@@ -2076,32 +2107,253 @@ index 000000000..08e4ed651
 +	0x17b7e1, 0x180000, 0x1f00a0, 0x1903f3, 0x1903fb, 0x1f0000,
 +};
 +
-+static int jl2xxx_patch_static_op_set(struct phy_device *phydev)
++/* no patch_version, val default=0 */
++static const u16 patch_version3;
++static const u32 init_data3[] = {
++	0x1f00a0, 0x1903f3, 0x1f0012, 0x150100, 0x1f00ad, 0x100000,
++	0x11e0c6, 0x1f00a0, 0x1903fb, 0x1903fb, 0x1903fb, 0x1903fb,
++	0x1903fb, 0x1903fb, 0x1f0012, 0x150000, 0x1f00ad, 0x110000,
++	0x127c30, 0x138137, 0x140000, 0x15006f, 0x1600e0, 0x170000,
++	0x180000, 0x127c3c, 0x130000, 0x140000, 0x150000, 0x161161,
++	0x177601, 0x1895b7, 0x127c48, 0x13fffd, 0x146541, 0x1586b7,
++	0x160002, 0x17c222, 0x18c026, 0x127c54, 0x1307b7, 0x140002,
++	0x150613, 0x162b06, 0x178593, 0x183085, 0x127c60, 0x130293,
++	0x142900, 0x15157d, 0x168693, 0x1797c6, 0x188733, 0x127c6c,
++	0x1300b7, 0x148333, 0x1500c7, 0x16ec63, 0x1734e2, 0x184398,
++	0x127c78, 0x138f69, 0x140713, 0x152b07, 0x162023, 0x1700e3,
++	0x180791, 0x127c84, 0x1393e3, 0x14fed7, 0x1567a1, 0x16659d,
++	0x178793, 0x181377, 0x127c90, 0x132423, 0x142ef0, 0x158713,
++	0x166b75, 0x176785, 0x18ac23, 0x127c9c, 0x13eae7, 0x140737,
++	0x158693, 0x160713, 0x1770a7, 0x18ae23, 0x127ca8, 0x13eae7,
++	0x140737, 0x159737, 0x160713, 0x17a867, 0x18a023, 0x127cb4,
++	0x13ece7, 0x141737, 0x157737, 0x166789, 0x170713, 0x188f77,
++	0x127cc0, 0x13ae23, 0x140ce7, 0x150737, 0x16078a, 0x17a023,
++	0x180ee7, 0x127ccc, 0x130737, 0x14ffc7, 0x150713, 0x167137,
++	0x17a223, 0x180ee7, 0x127cd8, 0x133737, 0x147337, 0x150713,
++	0x162a37, 0x17ae23, 0x183ce7, 0x127ce4, 0x1302b7, 0x14050a,
++	0x150737, 0x160103, 0x17a023, 0x183e57, 0x127cf0, 0x130713,
++	0x143137, 0x15a223, 0x163ee7, 0x17668d, 0x188513, 0x127cfc,
++	0x137375, 0x1404b7, 0x150713, 0x16ae23, 0x17a0a6, 0x188313,
++	0x127d08, 0x1378a4, 0x1404b7, 0x1597ba, 0x16a023, 0x17a266,
++	0x188713, 0x127d14, 0x132474, 0x140437, 0x1577b7, 0x16a223,
++	0x17a2e6, 0x180313, 0x127d20, 0x130a74, 0x146711, 0x152c23,
++	0x16c667, 0x170337, 0x188793, 0x127d2c, 0x132e23, 0x14c667,
++	0x158293, 0x166072, 0x1703b7, 0x187737, 0x127d38, 0x132023,
++	0x14c857, 0x158393, 0x162a73, 0x172823, 0x18d077, 0x127d44,
++	0x1302b7, 0x141793, 0x150637, 0x160713, 0x172a23, 0x18d057,
++	0x127d50, 0x130613, 0x140256, 0x152c23, 0x16d0c7, 0x178493,
++	0x187474, 0x127d5c, 0x132e23, 0x14d097, 0x150413, 0x164a74,
++	0x172423, 0x18e087, 0x127d68, 0x131437, 0x14050a, 0x152623,
++	0x16e067, 0x170413, 0x188c74, 0x127d74, 0x132823, 0x14e087,
++	0x152023, 0x16ec77, 0x172223, 0x18ec57, 0x127d80, 0x1313b7,
++	0x1497ba, 0x152423, 0x16ecc7, 0x178413, 0x18a473, 0x127d8c,
++	0x132623, 0x14ec87, 0x158413, 0x167b75, 0x172223, 0x185287,
++	0x127d98, 0x138437, 0x140cc7, 0x150413, 0x167934, 0x172423,
++	0x185287, 0x127da4, 0x130437, 0x140e87, 0x152e23, 0x1676a7,
++	0x170413, 0x187134, 0x127db0, 0x132223, 0x147887, 0x1504b7,
++	0x160713, 0x176715, 0x182023, 0x127dbc, 0x13baa7, 0x148413,
++	0x1578a4, 0x162223, 0x17ba87, 0x188413, 0x127dc8, 0x131473,
++	0x142423, 0x15ba87, 0x160437, 0x1776b7, 0x180413, 0x127dd4,
++	0x130e64, 0x14c700, 0x150437, 0x16070a, 0x17c740, 0x188437,
++	0x127de0, 0x131306, 0x140413, 0x156934, 0x16cb00, 0x172a23,
++	0x1858a7, 0x127dec, 0x138413, 0x1478a4, 0x152c23, 0x165887,
++	0x178393, 0x185c73, 0x127df8, 0x132e23, 0x145877, 0x15a3b7,
++	0x167737, 0x178413, 0x186f73, 0x127e04, 0x132823, 0x145a87,
++	0x150437, 0x16078a, 0x172a23, 0x185a87, 0x127e10, 0x130437,
++	0x141707, 0x150413, 0x167134, 0x172c23, 0x185a87, 0x127e1c,
++	0x138393, 0x144f73, 0x152823, 0x165c77, 0x170437, 0x18078a,
++	0x127e28, 0x1303b7, 0x141847, 0x152a23, 0x165c87, 0x178393,
++	0x187133, 0x127e34, 0x132c23, 0x145c77, 0x1593b7, 0x167737,
++	0x178393, 0x186a73, 0x127e40, 0x132a23, 0x146a77, 0x152c23,
++	0x166a57, 0x1723b7, 0x1897ba, 0x127e4c, 0x132e23, 0x146ac7,
++	0x158413, 0x16a073, 0x172023, 0x186c87, 0x127e58, 0x131437,
++	0x1477b7, 0x156719, 0x160413, 0x174d74, 0x182623, 0x127e64,
++	0x138e87, 0x142437, 0x15068a, 0x162823, 0x178e67, 0x180413,
++	0x127e70, 0x13c874, 0x142a23, 0x158e87, 0x16c437, 0x177737,
++	0x180413, 0x127e7c, 0x136a74, 0x142c23, 0x15ba87, 0x162e23,
++	0x17ba57, 0x182023, 0x127e88, 0x13bcc7, 0x148613, 0x15dc73,
++	0x162223, 0x17bcc7, 0x18d348, 0x127e94, 0x138613, 0x1478a4,
++	0x15d710, 0x168393, 0x17f873, 0x182623, 0x127ea0, 0x130277,
++	0x14e737, 0x1577b7, 0x160713, 0x178e77, 0x18a423, 0x127eac,
++	0x13cce5, 0x142737, 0x15070a, 0x16a623, 0x17cc65, 0x180713,
++	0x127eb8, 0x130c77, 0x14a823, 0x15cce5, 0x16f737, 0x174510,
++	0x180713, 0x127ec4, 0x138e77, 0x14ac23, 0x1520e7, 0x164737,
++	0x173191, 0x180713, 0x127ed0, 0x135017, 0x14a223, 0x1524e7,
++	0x160737, 0x170200, 0x180713, 0x127edc, 0x137137, 0x14ae23,
++	0x15f6e7, 0x165737, 0x170713, 0x181761, 0x127ee8, 0x13a223,
++	0x14f8e7, 0x150737, 0x16cff8, 0x170713, 0x184007, 0x127ef4,
++	0x13a423, 0x14f8e7, 0x150737, 0x163fb0, 0x170713, 0x187137,
++	0x127f00, 0x13a623, 0x14f8e7, 0x151737, 0x160793, 0x170713,
++	0x188007, 0x127f0c, 0x13a823, 0x14f4e7, 0x151737, 0x16c37c,
++	0x17aa23, 0x18f4e7, 0x127f18, 0x136737, 0x14e793, 0x150713,
++	0x167a17, 0x17ac23, 0x18f4e7, 0x127f24, 0x131737, 0x14cb3c,
++	0x150713, 0x168077, 0x17ae23, 0x18f4e7, 0x127f30, 0x130737,
++	0x146080, 0x150713, 0x167937, 0x17a023, 0x18f6e7, 0x127f3c,
++	0x13d737, 0x148082, 0x150713, 0x16b7c7, 0x17a223, 0x18f6e7,
++	0x127f48, 0x136737, 0x140793, 0x150613, 0x164447, 0x17aa23,
++	0x184cc6, 0x127f54, 0x130637, 0x14a223, 0x150613, 0x162006,
++	0x17ac23, 0x184cc6, 0x127f60, 0x130713, 0x144f47, 0x15ae23,
++	0x164ce6, 0x174737, 0x18d0fc, 0x127f6c, 0x130713, 0x14fa07,
++	0x15a023, 0x164ee6, 0x178737, 0x189207, 0x127f78, 0x130713,
++	0x147937, 0x15a223, 0x16f2e7, 0x17c737, 0x1867a1, 0x127f84,
++	0x130713, 0x1437c7, 0x15a423, 0x16f2e7, 0x178737, 0x187807,
++	0x127f90, 0x130713, 0x147937, 0x15a623, 0x16f2e7, 0x17d737,
++	0x180793, 0x127f9c, 0x130713, 0x14b3c7, 0x15a823, 0x16f2e7,
++	0x176737, 0x18cb7c, 0x127fa8, 0x130713, 0x140807, 0x15aa23,
++	0x16f2e7, 0x178737, 0x188082, 0x127fb4, 0x130713, 0x140827,
++	0x15ac23, 0x16f2e7, 0x17806f, 0x18af4f, 0x127fc0, 0x134412,
++	0x144482, 0x154501, 0x160121, 0x178082, 0x184398, 0x127fcc,
++	0x13b94d, 0x140000, 0x150000, 0x160000, 0x170000, 0x180000,
++	0x110000, 0x127c30, 0x104000, 0x1f0000,
++};
++
++static bool jl2xxx_patch_check(struct phy_device *phydev,
++			      struct jl_patch *patch)
 +{
-+	int err;
 +
-+	err = jl2xxx_pre_init(phydev, init_data0, ARRAY_SIZE(init_data0),
-+			      patch_fw_versions0,
-+			      ARRAY_SIZE(patch_fw_versions0), patch_version0);
-+	if (err < 0)
-+		return err;
++	bool patch_ok = false;
++	int val;
++	int i;
 +
-+	err = jl2xxx_pre_init(phydev, init_data1, ARRAY_SIZE(init_data1),
-+			      patch_fw_versions1,
-+			      ARRAY_SIZE(patch_fw_versions1), patch_version1);
-+	if (err < 0)
-+		return err;
++	val = jlsemi_read_paged(phydev, JL2XXX_PAGE0, JL2XXX_PHY_INFO_REG);
++	for (i = 0; i < patch->phy.info_len; i++) {
++		if (val == patch->phy.info[i])
++			patch_ok |= true;
++	}
 +
-+	err = jl2xxx_pre_init(phydev, init_data2, ARRAY_SIZE(init_data2),
-+			      patch_fw_versions2,
-+			      ARRAY_SIZE(patch_fw_versions2), patch_version2);
-+	if (err < 0)
-+		return err;
++	return patch_ok;
++}
++
++static bool jl2xxx_patch_zte_check(struct phy_device *phydev,
++				   struct jl_patch *patch)
++{
++	struct jl2xxx_priv *priv = phydev->priv;
++	bool patch_ok = false;
++	int mode;
++
++	mode = jlsemi_read_paged(phydev, JL2XXX_PAGE18, JL2XXX_WORK_MODE_REG);
++	/* Can only be used in sgmii->utp mode */
++	if (((priv->work_mode.enable & JL2XXX_WORK_MODE_STATIC_OP_EN) &&
++	   (priv->work_mode.mode == JL2XXX_UTP_SGMII_MODE)) ||
++	   ((mode & JL2XXX_WORK_MODE_MASK) == JL2XXX_UTP_SGMII_MODE)) {
++		patch_ok = jl2xxx_patch_check(phydev, patch);
++	}
++	return patch_ok;
++}
++
++static int jl2xxx_patch_load(struct phy_device *phydev,
++			     struct jl_patch *patch)
++{
++	int regaddr, val;
++	int i, j;
++
++	for (i = 0; i < patch->data_len; i++) {
++		regaddr = ((patch->data[i] >> 16) & 0xff);
++		val = (patch->data[i] & 0xffff);
++		phy_write(phydev, regaddr, val);
++		if (regaddr == 0x18) {
++			phy_write(phydev, 0x10, 0x8006);
++			for (j = 0; j < 8; j++) {
++				if (phy_read(phydev, 0x10) == 0)
++					break;
++			}
++		}
++	}
++	/* Wait load patch complete */
++	msleep(20);
 +
 +	return 0;
 +}
 +
-+#if (JLSEMI_PHY_WOL)
++static int jl2xxx_patch_verify_by_version(struct phy_device *phydev,
++					  struct jl_patch *patch)
++{
++	int version;
++
++	version = jlsemi_read_paged(phydev, JL2XXX_PAGE174, JL2XXX_PATCH_REG);
++	if (version != patch->version)
++		JLSEMI_PHY_MSG(KERN_ERR
++			       "%s: patch version is not match\n", __func__);
++	return 0;
++}
++
++static int jl2xxx_patch_verify_by_regval(struct phy_device *phydev,
++					 struct jl_patch *patch)
++{
++	int val;
++
++	val = jlsemi_read_paged(phydev, JL2XXX_PAGE179, JL2XXX_REG16);
++	if (val != patch->version)
++		JLSEMI_PHY_MSG(KERN_ERR "%s: patch load failed!\n", __func__);
++	return 0;
++}
++
++static struct jl_patch phy_patches[] = {
++	{
++		.data = init_data0,
++		.data_len = ARRAY_SIZE(init_data0),
++		.version = patch_version0,
++		{
++			.info = patch_fw_versions0,
++			.info_len = ARRAY_SIZE(patch_fw_versions0),
++		},
++		.check = jl2xxx_patch_check,
++		.load = jl2xxx_patch_load,
++		.verify = jl2xxx_patch_verify_by_version,
++
++	},
++	{
++		.data = init_data1,
++		.data_len = ARRAY_SIZE(init_data1),
++		.version = patch_version1,
++		{
++			.info = patch_fw_versions1,
++			.info_len = ARRAY_SIZE(patch_fw_versions1),
++		},
++		.check = jl2xxx_patch_check,
++		.load = jl2xxx_patch_load,
++		.verify = jl2xxx_patch_verify_by_version,
++	},
++	{
++		.data = init_data2,
++		.data_len = ARRAY_SIZE(init_data2),
++		.version = patch_version2,
++		{
++			.info = patch_fw_versions2,
++			.info_len = ARRAY_SIZE(patch_fw_versions2),
++		},
++		.check = jl2xxx_patch_check,
++		.load = jl2xxx_patch_load,
++		.verify = jl2xxx_patch_verify_by_version,
++	},
++	{
++		.data = init_data3,
++		.data_len = ARRAY_SIZE(init_data3),
++		.version = 0,
++		{
++			.info = patch_fw_versions3,
++			.info_len = ARRAY_SIZE(patch_fw_versions3),
++		},
++		.check = jl2xxx_patch_zte_check,
++		.load = jl2xxx_patch_load,
++		.verify = jl2xxx_patch_verify_by_regval,
++	},
++};
++
++int jl2xxx_patch_static_op_set(struct phy_device *phydev)
++{
++	int found;
++	int i;
++
++	for (i = 0; i < ARRAY_SIZE(phy_patches); i++) {
++		found = jl2xxx_pre_init(phydev, &phy_patches[i]);
++		if (found)
++			return found;
++	}
++
++	return 0;
++}
++
 +int jl1xxx_wol_dynamic_op_get(struct phy_device *phydev)
 +{
 +	return jlsemi_fetch_bit(phydev, JL1XXX_PAGE129,
@@ -2124,7 +2376,6 @@ index 000000000..08e4ed651
 +
 +	return 0;
 +}
-+#endif
 +
 +int jl1xxx_intr_ack_event(struct phy_device *phydev)
 +{
@@ -2159,7 +2410,6 @@ index 000000000..08e4ed651
 +	return 0;
 +}
 +
-+#if (JLSEMI_PHY_WOL)
 +static int jl2xxx_wol_static_op_set(struct phy_device *phydev)
 +{
 +	int err;
@@ -2218,7 +2468,6 @@ index 000000000..08e4ed651
 +
 +	return 0;
 +}
-+#endif
 +
 +int jl2xxx_intr_ack_event(struct phy_device *phydev)
 +{
@@ -2307,13 +2556,11 @@ index 000000000..08e4ed651
 +			return err;
 +	}
 +
-+#if (JLSEMI_PHY_WOL)
 +	if (priv->wol.enable & JL1XXX_WOL_STATIC_OP_EN) {
 +		err = jl1xxx_wol_static_op_set(phydev);
 +		if (err < 0)
 +			return err;
 +	}
-+#endif
 +
 +	if (priv->intr.enable & JL1XXX_INTR_STATIC_OP_EN) {
 +		err = jl1xxx_intr_static_op_set(phydev);
@@ -2329,6 +2576,28 @@ index 000000000..08e4ed651
 +
 +	if (priv->rmii.enable & JL1XXX_RMII_STATIC_OP_EN) {
 +		err = jl1xxx_rmii_static_op_set(phydev);
++		if (err < 0)
++			return err;
++	}
++
++	return 0;
++}
++
++int jl2xxx_static_sgmii_2_utp_mode_core_vol_adjust(struct phy_device *phydev)
++{
++	struct jl2xxx_priv *priv = phydev->priv;
++	int mode;
++	int err;
++
++	mode = jlsemi_read_paged(phydev, JL2XXX_PAGE18, JL2XXX_WORK_MODE_REG);
++	/* Can only be used in sgmii->utp mode */
++	if (((priv->work_mode.enable & JL2XXX_WORK_MODE_STATIC_OP_EN) &&
++	   (priv->work_mode.mode == JL2XXX_UTP_SGMII_MODE)) ||
++	   ((mode & JL2XXX_WORK_MODE_MASK) == JL2XXX_UTP_SGMII_MODE)) {
++		// page 257, reg 29, bit6:  1->1V, 0->0.9V
++		err = jlsemi_set_bits(phydev, JL2XXX_PAGE257,
++					JL2XXX_ANA_PM0_REG,
++					JL2XXX_BUCK_SEL_VOUT_CFG);
 +		if (err < 0)
 +			return err;
 +	}
@@ -2359,13 +2628,11 @@ index 000000000..08e4ed651
 +			return err;
 +	}
 +
-+#if (JLSEMI_PHY_WOL)
 +	if (priv->wol.enable & JL2XXX_WOL_STATIC_OP_EN) {
 +		err = jl2xxx_wol_static_op_set(phydev);
 +		if (err < 0)
 +			return err;
 +	}
-+#endif
 +
 +	if (priv->intr.enable & JL2XXX_INTR_STATIC_OP_EN) {
 +		err = jl2xxx_intr_static_op_set(phydev);
@@ -2414,50 +2681,24 @@ index 000000000..08e4ed651
 +		if (err < 0)
 +			return err;
 +	}
-+
++	// SGMII-TO-UTP mode adjust core voltage to 1.0V
++	err = jl2xxx_static_sgmii_2_utp_mode_core_vol_adjust(phydev);
++	if (err < 0)
++		return err;
 +	return 0;
 +}
 +
-+int jl2xxx_pre_init(struct phy_device *phydev,
-+		    u32 *init_data, u16 data_len,
-+		    u16 *patch_fw_versions, u16 versions_len,
-+		    u16 patch_version)
++int jl2xxx_pre_init(struct phy_device *phydev, struct jl_patch *patch)
 +{
-+	int i, j;
-+	int regaddr, val;
-+	bool patch_ok = false;
++	bool check;
 +
-+	val = jlsemi_read_paged(phydev, JL2XXX_PAGE0, JL2XXX_PHY_INFO_REG);
-+	for (i = 0; i < versions_len; i++) {
-+		if (val == patch_fw_versions[i])
-+			patch_ok |= true;
-+	}
-+
-+	if (!patch_ok)
++	check = patch->check(phydev, patch);
++	if (!check)
 +		return 0;
++	patch->load(phydev, patch);
++	patch->verify(phydev, patch);
 +
-+	for (i = 0; i < data_len; i++) {
-+		regaddr = ((init_data[i] >> 16) & 0xff);
-+		val = (init_data[i] & 0xffff);
-+		phy_write(phydev, regaddr, val);
-+		if (regaddr == 0x18) {
-+			phy_write(phydev, 0x10, 0x8006);
-+			for (j = 0; j < 8; j++) {
-+				if (phy_read(phydev, 0x10) == 0)
-+					break;
-+			}
-+		}
-+	}
-+	/* Wait load patch complete */
-+	msleep(20);
-+
-+	val = jlsemi_read_paged(phydev, JL2XXX_PAGE174, JL2XXX_PATCH_REG);
-+
-+	if (val != patch_version)
-+		JLSEMI_PHY_MSG(KERN_ERR
-+			       "%s: patch version is not match\n", __func__);
-+
-+	return 0;
++	return 1;
 +}
 +
 +int jlsemi_soft_reset(struct phy_device *phydev)
@@ -2722,10 +2963,10 @@ index 000000000..08e4ed651
 +#endif
 diff --git a/drivers/net/phy/jlsemi-core.h b/drivers/net/phy/jlsemi-core.h
 new file mode 100644
-index 000000000..0501a452d
+index 000000000..7e2c5fa20
 --- /dev/null
 +++ b/drivers/net/phy/jlsemi-core.h
-@@ -0,0 +1,439 @@
+@@ -0,0 +1,457 @@
 +/* SPDX-License-Identifier: GPL-2.0+
 + *
 + * Copyright (C) 2021 JLSemi Corporation
@@ -2887,8 +3128,15 @@ index 000000000..0501a452d
 +
 +#define JL2XXX_REG29		29
 +
++#define JL2XXX_PAGE179		179
++
 +#define JL2XXX_PAGE191		191
 +#define JL2XXX_RGMII_CFG	BIT(3)
++
++#define JL2XXX_PAGE257		257
++#define JL2XXX_ANA_PM0_REG	29
++#define JL2XXX_BUCK_SEL_VOUT_CFG	BIT(6)
++
 +
 +#define JL2XXX_PAGE258		258
 +#define JL2XXX_SLEW_RATE_CTRL_REG	23
@@ -2908,6 +3156,19 @@ index 000000000..0501a452d
 +#define ADVERTISE_FIBER_1000FULL	0x20
 +
 +/*************************************************************************/
++struct jl_patch {
++	const u32 *data;
++	u16 data_len;
++	const u16 version;
++	struct {
++		const u16 *info;
++		u16 info_len;
++	} phy;
++	bool (*check)(struct phy_device *phydev, struct jl_patch *patch);
++	int (*load)(struct phy_device *phydev, struct jl_patch *patch);
++	int (*verify)(struct phy_device *phydev, struct jl_patch *patch);
++};
++
 +struct jl_hw_stat {
 +	const char *string;
 +	u8 reg;
@@ -3026,6 +3287,7 @@ index 000000000..0501a452d
 +
 +struct jl_rxc_out_ctrl {
 +	u32 enable;			/* Rx clock out control enable */
++	bool inited;			/* Only execute once flag */
 +	bool ethtool;			/* Whether the ethtool is supported */
 +};
 +
@@ -3058,7 +3320,7 @@ index 000000000..0501a452d
 +};
 +
 +/* macros to simplify debug checking */
-+#define JLSEMI_PHY_MSG(msg, args...) printk(msg, ## args)
++#define JLSEMI_PHY_MSG(msg, args...) printk(KERN_INFO msg, ## args)
 +
 +/************************* JLSemi iteration code *************************/
 +struct device *jlsemi_get_mdio(struct phy_device *phydev);
@@ -3099,10 +3361,7 @@ index 000000000..0501a452d
 +
 +int jlsemi_soft_reset(struct phy_device *phydev);
 +
-+int jl2xxx_pre_init(struct phy_device *phydev,
-+		    u32 *init_data, u16 data_len,
-+		    u16 *patch_fw_versions, u16 versions_len,
-+		    u16 patch_version);
++int jl2xxx_pre_init(struct phy_device *phydev, struct jl_patch *patch);
 +
 +bool jl2xxx_read_fiber_status(struct phy_device *phydev);
 +
@@ -3165,359 +3424,12 @@ index 000000000..0501a452d
 +
 +#endif /* _JLSEMI_CORE_H */
 +
-diff --git a/drivers/net/phy/jlsemi-dt-phy.h b/drivers/net/phy/jlsemi-dt-phy.h
-new file mode 100644
-index 000000000..0a6e2210e
---- /dev/null
-+++ b/drivers/net/phy/jlsemi-dt-phy.h
-@@ -0,0 +1,341 @@
-+/* SPDX-License-Identifier: GPL-2.0
-+ *
-+ * Device Tree constants for JLSemi PHY
-+ *
-+ * Author: Gangqiao Kuang
-+ *
-+ * Copyright (c) 2021 JLSemi Corporation
-+ */
-+
-+#ifndef _DT_BINDINGS_JLSEMI_PHY_H
-+#define _DT_BINDINGS_JLSEMI_PHY_H
-+
-+/**************************** Linux Version Compatible ********************/
-+#define JLSEMI_DEV_COMPATIBLE	(KERNEL_VERSION(4, 5, 0) > LINUX_VERSION_CODE)
-+#define JL2XXX_GET_STRING	(KERNEL_VERSION(4, 5, 0) <= LINUX_VERSION_CODE)
-+#define JL2XXX_GET_STAT		(KERNEL_VERSION(4, 5, 0) <= LINUX_VERSION_CODE)
-+#define JL2XXX_PHY_TUNABLE	(KERNEL_VERSION(5, 0, 0) <= LINUX_VERSION_CODE)
-+#define JLSEMI_PHY_WOL		(KERNEL_VERSION(3, 10, 0) < LINUX_VERSION_CODE)
-+/*************************************************************************/
-+
-+/**************************** JLSemi Debug *******************************/
-+#define JLSEMI_DEBUG_INFO	0
-+/*************************************************************************/
-+
-+/************************* JLSemi Phy Init Reentrant *********************/
-+#define JLSEMI_PHY_NOT_REENTRANT	false
-+/*************************************************************************/
-+
-+/**************************** JL1XXX-LED *********************************/
-+/* PHY LED Modes Select */
-+#define JL1XXX_LED0_STRAP		(1 << 0)
-+#define JL1XXX_LED0_EEE			(1 << 1)
-+#define JL1XXX_LED0_100_ACTIVITY	(1 << 2)
-+#define JL1XXX_LED0_10_ACTIVITY		(1 << 3)
-+#define JL1XXX_LED0_100_LINK		(1 << 4)
-+#define JL1XXX_LED0_10_LINK		(1 << 5)
-+#define JL1XXX_LED1_STRAP		(1 << 8)
-+#define JL1XXX_LED1_EEE			(1 << 9)
-+#define JL1XXX_LED1_100_ACTIVITY	(1 << 10)
-+#define JL1XXX_LED1_10_ACTIVITY		(1 << 11)
-+#define JL1XXX_LED1_100_LINK		(1 << 12)
-+#define JL1XXX_LED1_10_LINK		(1 << 13)
-+
-+/* PHY LED As Gpio Output Select */
-+#define JL1XXX_GPIO_LED0_OUT		(1 << 2)
-+#define JL1XXX_GPIO_LED1_OUT		(1 << 3)
-+#define JL1XXX_GPIO_LED0_EN		(1 << 14)
-+#define JL1XXX_GPIO_LED1_EN		(1 << 15)
-+
-+/* PHY LED Control Enable Mask Select */
-+#define JL1XXX_LED_STATIC_OP_EN		(1 << 0)
-+#define JL1XXX_LED_MODE_EN		(1 << 1)
-+#define JL1XXX_LED_GLOABL_PERIOD_EN	(1 << 2)
-+#define JL1XXX_LED_GLOBAL_ON_EN		(1 << 3)
-+#define JL1XXX_LED_GPIO_OUT_EN		(1 << 4)
-+//-----------------------------------------------------------------------//
-+/* PHY LED Control Enable Mask Config */
-+#define JL1XXX_LED_CTRL_EN	(0)
-+
-+/* PHY LED Modes Config */
-+#define JL1XXX_CFG_LED_MODE	(JL1XXX_LED0_100_LINK | \
-+				 JL1XXX_LED0_10_LINK | \
-+				 JL1XXX_LED1_100_ACTIVITY | \
-+				 JL1XXX_LED1_10_ACTIVITY)
-+
-+/* PHY LED As Gpio Output Config */
-+#define JL1XXX_CFG_GPIO		(JL1XXX_GPIO_LED0_EN | \
-+				 JL1XXX_GPIO_LED0_OUT | \
-+				 JL1XXX_GPIO_LED1_EN | \
-+				 JL1XXX_GPIO_LED1_OUT)
-+
-+/* PHY LED Global Period Config */
-+#define JL1XXX_GLOBAL_PERIOD_MS		0x10
-+
-+/* PHY LED Global Hold On Config */
-+#define JL1XXX_GLOBAL_ON_MS		0x8
-+/**************************************************************************/
-+
-+/****************************** JL1XXX-WOL ********************************/
-+/* PHY WOL Control Enable Mask Select */
-+#define JL1XXX_WOL_STATIC_OP_EN		(1 << 0)
-+//-----------------------------------------------------------------------//
-+/* PHY WOL Control Enable Mask Config */
-+#define JL1XXX_WOL_CTRL_EN	(0)
-+
-+/*************************************************************************/
-+
-+/***************************** JL1XXX-INTR *******************************/
-+/* PHY Interrupt Control Enable Mask Select */
-+#define JL1XXX_INTR_STATIC_OP_EN	(1 << 0)
-+#define JL1XXX_INTR_LINK_CHANGE_EN	(1 << 1)
-+#define JL1XXX_INTR_AN_ERR_EN		(1 << 2)
-+//-----------------------------------------------------------------------//
-+/* PHY Interrupt Irq Number Config */
-+#define JL1XXX_INTR_IRQ			-1
-+
-+/* PHY Interrupt Control Enable Mask Config */
-+#define JL1XXX_INTR_CTRL_EN	(0)
-+/*************************************************************************/
-+
-+/**************************** JL1XXX-MDI *********************************/
-+/* PHY MDI Control Mode Enable Mask Select */
-+#define JL1XXX_MDI_STATIC_OP_EN		(1 << 0)
-+#define JL1XXX_MDI_RATE_EN		(1 << 1)
-+#define JL1XXX_MDI_AMPLITUDE_EN		(1 << 2)
-+
-+/* PHY MDI Rate Select */
-+#define JL1XXX_MDI_RATE_STANDARD	0
-+#define JL1XXX_MDI_RATE_ACCELERATE	1
-+
-+/* PHY MDI Amplitude Select */
-+#define JL1XXX_MDI_AMPLITUDE0		0
-+#define JL1XXX_MDI_AMPLITUDE1		1
-+#define JL1XXX_MDI_AMPLITUDE2		2
-+#define JL1XXX_MDI_AMPLITUDE3		3
-+#define JL1XXX_MDI_AMPLITUDE4		4
-+#define JL1XXX_MDI_AMPLITUDE5		5
-+#define JL1XXX_MDI_AMPLITUDE6		6
-+#define JL1XXX_MDI_AMPLITUDE7		7
-+//-----------------------------------------------------------------------//
-+/* PHY MDI Control Mode Enable Mask Config */
-+#define JL1XXX_MDI_CTRL_EN		(0)
-+
-+/* PHY MDI Rate Config */
-+#define JL1XXX_MDI_RATE			JL1XXX_MDI_RATE_ACCELERATE
-+
-+/* PHY MDI Amplitude Config */
-+#define JL1XXX_MDI_AMPLITUDE		JL1XXX_MDI_AMPLITUDE4
-+
-+/*************************************************************************/
-+
-+/**************************** JL1XXX-RMII ********************************/
-+/* PHY RMII Control Mode Enable Mask Select */
-+#define JL1XXX_RMII_STATIC_OP_EN	(1 << 0)
-+#define JL1XXX_RMII_MODE_EN		(1 << 1)
-+#define JL1XXX_RMII_CLK_50M_INPUT_EN	(1 << 2)
-+#define JL1XXX_RMII_TX_SKEW_EN		(1 << 3)
-+#define JL1XXX_RMII_RX_SKEW_EN		(1 << 4)
-+#define JL1XXX_RMII_CRS_DV_EN		(1 << 5)
-+//-----------------------------------------------------------------------//
-+/* PHY RMII Control Mode Enable Mask Config */
-+#define JL1XXX_RMII_CTRL_EN		(0)
-+
-+/* PHY RMII Timing Config */
-+#define JL1XXX_RMII_TX_TIMING		0xf
-+#define JL1XXX_RMII_RX_TIMING		0xf
-+
-+/*************************************************************************/
-+
-+/**************************** JL2XXX-LED *********************************/
-+/* PHY LED Modes Select*/
-+#define JL2XXX_LED0_LINK10		(1 << 0)
-+#define JL2XXX_LED0_LINK100		(1 << 1)
-+#define JL2XXX_LED0_LINK1000		(1 << 3)
-+#define JL2XXX_LED0_ACTIVITY		(1 << 4)
-+#define JL2XXX_LED1_LINK10		(1 << 5)
-+#define JL2XXX_LED1_LINK100		(1 << 6)
-+#define JL2XXX_LED1_LINK1000		(1 << 8)
-+#define JL2XXX_LED1_ACTIVITY		(1 << 9)
-+#define JL2XXX_LED2_LINK10		(1 << 10)
-+#define JL2XXX_LED2_LINK100		(1 << 11)
-+#define JL2XXX_LED2_LINK1000		(1 << 13)
-+#define JL2XXX_LED2_ACTIVITY		(1 << 14)
-+/* mode_A = 0 and mode_B = 1 default mode_A */
-+#define JL2XXX_LED_GLB_MODE_B		(1 << 15)
-+
-+/* PHY LED Polarity Select */
-+#define JL2XXX_LED0_POLARITY		(1 << 12)
-+#define JL2XXX_LED1_POLARITY		(1 << 11)
-+#define JL2XXX_LED2_POLARITY		(1 << 10)
-+
-+/* PHY LED Control Enable Mask Select */
-+#define JL2XXX_LED_STATIC_OP_EN		(1 << 0)
-+#define JL2XXX_LED_MODE_EN		(1 << 1)
-+#define JL2XXX_LED_GLOABL_PERIOD_EN	(1 << 2)
-+#define JL2XXX_LED_GLOBAL_ON_EN		(1 << 3)
-+#define JL2XXX_LED_POLARITY_EN		(1 << 4)
-+
-+//-----------------------------------------------------------------------//
-+/* PHY LED Control Enable Mask Config */
-+#define JL2XXX_LED_CTRL_EN	(0)
-+
-+/* PHY LED Modes Config */
-+#define JL2XXX_CFG_LED_MODE	(JL2XXX_LED0_LINK10 | \
-+				 JL2XXX_LED0_ACTIVITY | \
-+				 JL2XXX_LED1_LINK100 | \
-+				 JL2XXX_LED1_ACTIVITY | \
-+				 JL2XXX_LED2_LINK1000 | \
-+				 JL2XXX_LED2_ACTIVITY)
-+
-+/* PHY LED Polarity Config */
-+#define JL2XXX_LED_POLARITY	(JL2XXX_LED0_POLARITY | \
-+				 JL2XXX_LED1_POLARITY | \
-+				 JL2XXX_LED2_POLARITY)
-+
-+/* PHY LED Global Period Config */
-+#define JL2XXX_GLOBAL_PERIOD_MS		0x3
-+
-+/* PHY LED Global Hold On Config */
-+#define JL2XXX_GLOBAL_ON_MS		0x2
-+/*************************************************************************/
-+
-+/**************************** JL2XXX-FLD *********************************/
-+/* PHY Fast Link Down Control Enable Mask Select */
-+#define JL2XXX_FLD_STATIC_OP_EN		(1 << 0)
-+//-----------------------------------------------------------------------//
-+/* PHY Fast Link Down Control Enable Mask Config */
-+#define JL2XXX_FLD_CTRL_EN		(0)
-+
-+/* PHY Fast Link Down Delay Config */
-+#define JL2XXX_FLD_DELAY		0
-+/*************************************************************************/
-+
-+/**************************** JL2XXX-WOL *********************************/
-+/* PHY WOL Control Enable Mask Select */
-+#define JL2XXX_WOL_STATIC_OP_EN		(1 << 0)
-+
-+//-----------------------------------------------------------------------//
-+/* PHY WOL Control Enable Mask Config */
-+#define JL2XXX_WOL_CTRL_EN	(0)
-+/*************************************************************************/
-+
-+/**************************** JL2XXX-INTR ********************************/
-+/* PHY Interrupt Control Enable Mask Select */
-+#define JL2XXX_INTR_STATIC_OP_EN	(1 << 0)
-+#define JL2XXX_INTR_LINK_CHANGE_EN	(1 << 1)
-+#define JL2XXX_INTR_AN_ERR_EN		(1 << 2)
-+#define JL2XXX_INTR_AN_COMPLETE_EN	(1 << 3)
-+#define JL2XXX_INTR_AN_PAGE_RECE	(1 << 4)
-+//-----------------------------------------------------------------------//
-+/* PHY Interrupt Irq Number Config */
-+#define JL2XXX_INTR_IRQ			-1
-+
-+/* PHY Interrupt Control Enable Mask Config */
-+#define JL2XXX_INTR_CTRL_EN	(0)
-+/*************************************************************************/
-+
-+/**************************** JL2XXX-DSFT ********************************/
-+/* PHY Downshift Control Enable Mask */
-+#define JL2XXX_DSFT_STATIC_OP_EN	(1 << 0)
-+//-----------------------------------------------------------------------//
-+/* PHY Downshift Control Enable Config */
-+#define JL2XXX_DSFT_CTRL_EN	(0)
-+
-+/* PHY Downshift Count Config */
-+#define JL2XXX_DSFT_AN_CNT		4
-+/*************************************************************************/
-+
-+/**************************** JL2XXX-RGMII *******************************/
-+/* PHY RGMII Control Mode Enable Mask Select */
-+#define JL2XXX_RGMII_STATIC_OP_EN	(1 << 0)
-+#define JL2XXX_RGMII_TX_DLY_EN		(1 << 1)
-+#define JL2XXX_RGMII_RX_DLY_EN		(1 << 2)
-+/* PHY RGMII DELAY BIT */
-+#define JL2XXX_RGMII_TX_DLY_2NS		(1 << 8)
-+#define JL2XXX_RGMII_RX_DLY_2NS		(1 << 9)
-+//-----------------------------------------------------------------------//
-+/* PHY RGMII Control Mode Enable Mask Config */
-+#define JL2XXX_RGMII_CTRL_EN	(0)
-+
-+/*************************************************************************/
-+
-+/**************************** JL2XXX-PATCH *******************************/
-+/* PHY Patch Control Mode Enable Mask Select */
-+#define JL2XXX_PATCH_STATIC_OP_EN	(1 << 0)
-+//-----------------------------------------------------------------------//
-+/* PHY Patch Control Mode Enable Mask Config */
-+#define JL2XXX_PATCH_CTRL_EN	(JL2XXX_PATCH_STATIC_OP_EN)
-+
-+/*************************************************************************/
-+
-+/**************************** JL2XXX-CLOCK *******************************/
-+/* PHY Clock Control Mode Enable Mask Select */
-+#define JL2XXX_CLK_STATIC_OP_EN		(1 << 0)
-+#define JL2XXX_25M_CLK_OUT_EN		(1 << 1)
-+#define JL2XXX_125M_CLK_OUT_EN		(1 << 2)
-+#define JL2XXX_CLK_OUT_DIS		(1 << 3)
-+//-----------------------------------------------------------------------//
-+/* PHY Clock Control Mode Enable Mask Config */
-+#define JL2XXX_CLK_CTRL_EN	(0)
-+
-+/*************************************************************************/
-+
-+/**************************** JL2XXX-WORK_MODE ***************************/
-+/* PHY Work Mode Control Mode Enable Mask Select */
-+#define JL2XXX_WORK_MODE_STATIC_OP_EN	(1 << 0)
-+
-+/* PHY Work Mode Select */
-+#define JL2XXX_UTP_RGMII_MODE		0
-+#define JL2XXX_FIBER_RGMII_MODE		1
-+#define JL2XXX_UTP_FIBER_RGMII_MODE	2
-+#define JL2XXX_UTP_SGMII_MODE		3
-+#define JL2XXX_PHY_SGMII_RGMII_MODE	4
-+#define JL2XXX_MAC_SGMII_RGMII_MODE	5
-+#define JL2XXX_UTP_FIBER_FORCE_MODE1	6
-+#define JL2XXX_UTP_FIBER_FORCE_MODE2	7
-+//-----------------------------------------------------------------------//
-+/* PHY Work Mode Control Mode Enable Mask Config */
-+#define JL2XXX_WORK_MODE_CTRL_EN	(0)
-+
-+/* PHY Work Mode Config */
-+#define JL2XXX_WORK_MODE_MODE		JL2XXX_UTP_RGMII_MODE
-+
-+/*************************************************************************/
-+
-+/**************************** JL2XXX-LOOPBACK ****************************/
-+/* PHY Loopback Control Mode Enable Mask Select */
-+#define JL2XXX_LPBK_STATIC_OP_EN	(1 << 0)
-+
-+/* PHY Loopback Mode Select */
-+#define JL2XXX_LPBK_PCS_10M		0
-+#define JL2XXX_LPBK_PCS_100M		1
-+#define JL2XXX_LPBK_PCS_1000M		2
-+#define JL2XXX_LPBK_PMD_1000M		3
-+#define JL2XXX_LPBK_EXT_STUB_1000M	4
-+//-----------------------------------------------------------------------//
-+/* PHY Loopback Control Mode Enable Mask Config */
-+#define JL2XXX_LPBK_CTRL_EN		(0)
-+
-+/* PHY Loopback Mode Config */
-+#define JL2XXX_LPBK_MODE		JL2XXX_LPBK_PCS_1000M
-+/*************************************************************************/
-+
-+/**************************** JL2XXX-SLEW_RATE ****************************/
-+/* PHY Slew Rate Control Mode Enable Mask Select */
-+#define JL2XXX_SLEW_RATE_STATIC_OP_EN	(1 << 0)
-+//-----------------------------------------------------------------------//
-+/* PHY Slew Rate Control Mode Enable Mask Config */
-+#define JL2XXX_SLEW_RATE_CTRL_EN	(0)
-+
-+/*************************************************************************/
-+
-+/**************************** JL2XXX-RXC_OUT *****************************/
-+/* PHY Rx Clock Out Control Mode Enable Mask Select */
-+#define JL2XXX_RXC_OUT_STATIC_OP_EN	(1 << 0)
-+//-----------------------------------------------------------------------//
-+/* PHY Rx Clock Out Control Mode Enable Mask Config */
-+#define JL2XXX_RXC_OUT_CTRL_EN		(0)
-+
-+/*************************************************************************/
-+#endif
 diff --git a/drivers/net/phy/jlsemi.c b/drivers/net/phy/jlsemi.c
 new file mode 100644
-index 000000000..5f2ad24ff
+index 000000000..ccb2aae05
 --- /dev/null
 +++ b/drivers/net/phy/jlsemi.c
-@@ -0,0 +1,577 @@
+@@ -0,0 +1,594 @@
 +// SPDX-License-Identifier: GPL-2.0+
 +/*
 + * drivers/net/phy/jlsemi.c
@@ -3539,7 +3451,7 @@ index 000000000..5f2ad24ff
 +#include <linux/module.h>
 +#include <linux/netdevice.h>
 +
-+#define DRIVER_VERSION		"1.2.9"
++#define DRIVER_VERSION		"1.2.15"
 +#define DRIVER_NAME_100M	"JL1xxx Fast Ethernet " DRIVER_VERSION
 +#define DRIVER_NAME_1000M	"JL2xxx Gigabit Ethernet " DRIVER_VERSION
 +
@@ -3815,6 +3727,22 @@ index 000000000..5f2ad24ff
 +	bool fiber_mode;
 +	int err;
 +
++	if ((!priv->rxc_out.inited) &&
++	   (priv->rxc_out.enable & JL2XXX_RXC_OUT_STATIC_OP_EN) &&
++	   (priv->work_mode.mode == JL2XXX_MAC_SGMII_RGMII_MODE)) {
++		err = jlsemi_modify_paged_reg(phydev, JL2XXX_PAGE18,
++					      JL2XXX_WORK_MODE_REG,
++					      JL2XXX_WORK_MODE_MASK,
++					      priv->work_mode.mode);
++		if (err < 0)
++			return err;
++
++		err = jlsemi_soft_reset(phydev);
++		if (err < 0)
++			return err;
++		priv->rxc_out.inited = true;
++	}
++
 +	if (priv->intr.enable & JL2XXX_INTR_STATIC_OP_EN) {
 +		err = jl2xxx_ack_interrupt(phydev);
 +		if (err < 0)
@@ -3842,11 +3770,7 @@ index 000000000..5f2ad24ff
 +				JL2XXX_WORK_MODE_REG);
 +	phy_mode = val & JL2XXX_WORK_MODE_MASK;
 +
-+	if (phydev->interface == PHY_INTERFACE_MODE_SGMII)
-+		return 0;
-+
-+	if ((phydev->interface != PHY_INTERFACE_MODE_SGMII) &&
-+	    ((phy_mode == JL2XXX_FIBER_RGMII_MODE) ||
++	if (((phy_mode == JL2XXX_FIBER_RGMII_MODE) ||
 +	    (phy_mode == JL2XXX_UTP_FIBER_RGMII_MODE)))
 +		return jl2xxx_config_aneg_fiber(phydev);
 +
@@ -3855,6 +3779,15 @@ index 000000000..5f2ad24ff
 +
 +static int jl2xxx_suspend(struct phy_device *phydev)
 +{
++	struct jl2xxx_priv *priv = phydev->priv;
++
++	/* clear wol event */
++	if (priv->wol.enable & JL2XXX_WOL_STATIC_OP_EN) {
++		jlsemi_set_bits(phydev, JL2XXX_WOL_STAS_PAGE,
++				JL2XXX_WOL_STAS_REG, JL2XXX_WOL_EVENT);
++		jlsemi_clear_bits(phydev, JL2XXX_WOL_STAS_PAGE,
++				  JL2XXX_WOL_STAS_REG, JL2XXX_WOL_EVENT);
++	}
 +	return genphy_suspend(phydev);
 +}
 +
@@ -4020,12 +3953,8 @@ index 000000000..5f2ad24ff
 +				JL2XXX_WORK_MODE_REG);
 +	phy_mode = val & JL2XXX_WORK_MODE_MASK;
 +
-+	if (phydev->interface == PHY_INTERFACE_MODE_SGMII)
-+		return 0;
-+
 +	// fiber not an complite
-+	if ((phydev->interface != PHY_INTERFACE_MODE_SGMII) &&
-+	    ((phy_mode == JL2XXX_FIBER_RGMII_MODE) ||
++	if (((phy_mode == JL2XXX_FIBER_RGMII_MODE) ||
 +	    (phy_mode == JL2XXX_UTP_FIBER_RGMII_MODE)))
 +		return BMSR_ANEGCOMPLETE;
 +
@@ -4097,10 +4026,10 @@ index 000000000..5f2ad24ff
 +MODULE_DEVICE_TABLE(mdio, jlsemi_tbl);
 diff --git a/include/dt-bindings/phy/jlsemi-dt-phy.h b/include/dt-bindings/phy/jlsemi-dt-phy.h
 new file mode 100644
-index 000000000..0a6e2210e
+index 000000000..e94f2a7c2
 --- /dev/null
 +++ b/include/dt-bindings/phy/jlsemi-dt-phy.h
-@@ -0,0 +1,341 @@
+@@ -0,0 +1,349 @@
 +/* SPDX-License-Identifier: GPL-2.0
 + *
 + * Device Tree constants for JLSemi PHY
@@ -4281,15 +4210,23 @@ index 000000000..0a6e2210e
 +
 +//-----------------------------------------------------------------------//
 +/* PHY LED Control Enable Mask Config */
-+#define JL2XXX_LED_CTRL_EN	(0)
++//#define JL2XXX_LED_CTRL_EN	(0)
++#define JL2XXX_LED_CTRL_EN	(JL2XXX_LED_STATIC_OP_EN | JL2XXX_LED_MODE_EN)
 +
 +/* PHY LED Modes Config */
++/*
 +#define JL2XXX_CFG_LED_MODE	(JL2XXX_LED0_LINK10 | \
 +				 JL2XXX_LED0_ACTIVITY | \
 +				 JL2XXX_LED1_LINK100 | \
 +				 JL2XXX_LED1_ACTIVITY | \
 +				 JL2XXX_LED2_LINK1000 | \
 +				 JL2XXX_LED2_ACTIVITY)
++*/
++#define JL2XXX_CFG_LED_MODE	(JL2XXX_LED1_LINK10 | \
++				 JL2XXX_LED1_LINK100 | \
++                                 JL2XXX_LED1_LINK1000 | \
++                                 JL2XXX_LED2_ACTIVITY| \
++                                 JL2XXX_LED_GLB_MODE_B)
 +
 +/* PHY LED Polarity Config */
 +#define JL2XXX_LED_POLARITY	(JL2XXX_LED0_POLARITY | \
