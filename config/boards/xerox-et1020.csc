@@ -38,3 +38,21 @@ function post_family_tweaks_bsp__xerox-et1020() {
 	ln -sfv /usr/share/alsa/ucm2/Rockchip/xerox-et1020/xerox-et1020.conf \
 		"${destination}/usr/share/alsa/ucm2/conf.d/simple-card/xerox-et1020.conf"
 }
+
+function pre_customize_image__xerox-et1020() {
+	display_alert "${BOARD}" "Setting up AP6255 firmware symlinks" "info"
+
+	if [ -f "${SDCARD}/lib/firmware/brcm/BCM4345C0_003.001.025.0162.0000_Generic_UART_37_4MHz_wlbga_ref_iLNA_iTR_eLG.hcd" ]; then
+		ln -sfv BCM4345C0_003.001.025.0162.0000_Generic_UART_37_4MHz_wlbga_ref_iLNA_iTR_eLG.hcd \
+			"${SDCARD}/lib/firmware/brcm/BCM4345C0.xerox,et1020.hcd"
+	fi
+	if [ -f "${SDCARD}/lib/firmware/brcm/brcmfmac43455-sdio.bin" ]; then
+		ln -sfv brcmfmac43455-sdio.bin "${SDCARD}/lib/firmware/brcm/brcmfmac43455-sdio.xerox,et1020.bin"
+	fi
+	if [ -f "${SDCARD}/lib/firmware/brcm/brcmfmac43455-sdio.txt" ]; then
+		ln -sfv brcmfmac43455-sdio.txt "${SDCARD}/lib/firmware/brcm/brcmfmac43455-sdio.xerox,et1020.txt"
+	fi
+	if [ -f "${SDCARD}/lib/firmware/brcm/brcmfmac43455-sdio.clm_blob" ]; then
+		ln -sfv brcmfmac43455-sdio.clm_blob "${SDCARD}/lib/firmware/brcm/brcmfmac43455-sdio.xerox,et1020.clm_blob"
+	fi
+}

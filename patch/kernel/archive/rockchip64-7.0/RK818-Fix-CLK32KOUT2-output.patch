@@ -1,0 +1,44 @@
+From 9aebe6729e64f17106af5f34421fc9b8871dcdd3 Mon Sep 17 00:00:00 2001
+From: symbol_undefine <2312652727@qq.com>
+Date: Thu, 11 Jun 2026 15:52:38 +0800
+Subject: [PATCH] RK818: Fix CLK32KOUT2 output
+
+---
+ drivers/clk/clk-rk808.c   | 7 ++++++-
+ include/linux/mfd/rk808.h | 1 +
+ 2 files changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/clk/clk-rk808.c b/drivers/clk/clk-rk808.c
+index f7412b137..cd7052644 100644
+--- a/drivers/clk/clk-rk808.c
++++ b/drivers/clk/clk-rk808.c
+@@ -31,8 +31,13 @@ static int rk808_clkout2_enable(struct clk_hw *hw, bool enable)
+ 							 struct rk808_clkout,
+ 							 clkout2_hw);
+ 
++	/*
++	 * For RK818, CLK32KOUT2_FUN must be 0 to output 32k clock.
++	 * This bit is not present on RK808.
++	 */
+ 	return regmap_update_bits(rk808_clkout->regmap, RK808_CLK32OUT_REG,
+-				  CLK32KOUT2_EN, enable ? CLK32KOUT2_EN : 0);
++				  CLK32KOUT2_FUN | CLK32KOUT2_EN,
++				  enable ? CLK32KOUT2_EN : 0);
+ }
+ 
+ static int rk808_clkout2_prepare(struct clk_hw *hw)
+diff --git a/include/linux/mfd/rk808.h b/include/linux/mfd/rk808.h
+index 28170ee08..10f9a8332 100644
+--- a/include/linux/mfd/rk808.h
++++ b/include/linux/mfd/rk808.h
+@@ -933,6 +933,7 @@ enum rk806_dvs_mode {
+ #define VB_LO_SEL_3500MV	(7 << 0)
+ 
+ #define VOUT_LO_INT	BIT(0)
++#define CLK32KOUT2_FUN	BIT(1)
+ #define CLK32KOUT2_EN	BIT(0)
+ 
+ #define TEMP105C			0x08
+-- 
+2.54.0
+
