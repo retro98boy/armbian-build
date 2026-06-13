@@ -162,10 +162,10 @@ index 00000000..fbbae294
 +CONFIG_ERRNO_STR=y
 diff --git a/dts/upstream/src/arm64/rockchip/rk3588s-elo-backpack5.dts b/dts/upstream/src/arm64/rockchip/rk3588s-elo-backpack5.dts
 new file mode 100644
-index 00000000..68c38e74
+index 00000000..9e7e69d7
 --- /dev/null
 +++ b/dts/upstream/src/arm64/rockchip/rk3588s-elo-backpack5.dts
-@@ -0,0 +1,990 @@
+@@ -0,0 +1,1084 @@
 +// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
 +/*
 + * Copyright (c) 2026 retro98boy <retro98boy@qq.com>
@@ -178,6 +178,7 @@ index 00000000..68c38e74
 +#include <dt-bindings/leds/common.h>
 +#include <dt-bindings/pinctrl/rockchip.h>
 +#include <dt-bindings/soc/rockchip,vop2.h>
++#include <dt-bindings/usb/pd.h>
 +#include "rk3588s.dtsi"
 +
 +#define GPIO_I2C_BASED_DDC
@@ -219,6 +220,19 @@ index 00000000..68c38e74
 +		};
 +	};
 +
++	gpio-leds {
++		compatible = "gpio-leds";
++
++		pwr-led {
++			color = <LED_COLOR_ID_WHITE>;
++			default-state = "on";
++			function = LED_FUNCTION_POWER;
++			gpios = <&gpio1 RK_PB3 GPIO_ACTIVE_HIGH>;
++			pinctrl-names = "default";
++			pinctrl-0 = <&pwr_led_pin>;
++		};
++	};
++
 +#ifdef GPIO_I2C_BASED_DDC
 +	hdmi0_ddc: gpio-i2c {
 +		compatible = "i2c-gpio";
@@ -244,23 +258,10 @@ index 00000000..68c38e74
 +		};
 +	};
 +
-+	leds {
-+		compatible = "gpio-leds";
-+
-+		pwr-led {
-+			color = <LED_COLOR_ID_WHITE>;
-+			default-state = "on";
-+			function = LED_FUNCTION_POWER;
-+			gpios = <&gpio1 RK_PB3 GPIO_ACTIVE_HIGH>;
-+			pinctrl-names = "default";
-+			pinctrl-0 = <&pwr_led_pin>;
-+		};
-+	};
-+
 +	vcc3v3_pcie2x1l2: regulator-vcc3v3-pcie2x1l2 {
 +		compatible = "regulator-fixed";
 +		enable-active-high;
-+		gpio = <&gpio0 RK_PC7 GPIO_ACTIVE_HIGH>;
++		gpio = <&gpio0 RK_PC7 GPIO_ACTIVE_HIGH>; /* WL_REG_ON */
 +		pinctrl-names = "default";
 +		pinctrl-0 = <&pow_en>;
 +		regulator-name = "vcc3v3_pcie2x1l2";
@@ -340,6 +341,11 @@ index 00000000..68c38e74
 +		vin-supply = <&vcc_sysin>;
 +	};
 +
++	vbus_typec: regulator-vbus-typec {
++		compatible = "regulator-fixed";
++		regulator-name = "vbus_typec";
++	};
++
 +	vcc_1v1_nldo_s3: regulator-vcc-1v1-nldo-s3 {
 +		compatible = "regulator-fixed";
 +		regulator-name = "vcc_1v1_nldo_s3";
@@ -402,7 +408,8 @@ index 00000000..68c38e74
 +
 +&gmac1 {
 +	phy-handle = <&jl2101>;
-+	phy-mode = "rgmii-id";
++	phy-mode = "rgmii-rxid";
++	tx_delay = <77>;
 +	pinctrl-0 = <&gmac1_miim
 +		     &gmac1_tx_bus2
 +		     &gmac1_rx_bus2
@@ -518,6 +525,7 @@ index 00000000..68c38e74
 +		compatible = "dallas,ds1337";
 +		reg = <0x68>;
 +		#clock-cells = <0>;
++		clock-frequency = <32768>;
 +		clock-output-names = "rtcic_32kout";
 +		interrupt-parent = <&gpio0>;
 +		interrupts = <RK_PB0 IRQ_TYPE_LEVEL_LOW>;
@@ -527,9 +535,8 @@ index 00000000..68c38e74
 +
 +	/*
 +	 * genesys,gl9904 at 0x14 (0x54?), enable pin is gpio3 RK_PC6 GPIO_ACTIVE_LOW
-+	 * silergy,sy9329 at 0x71, enable pin is gpio3 RK_PC1 GPIO_ACTIVE_HIGH,
-+	 * interrupt pin is gpio1 RK_PA7 IRQ_TYPE_LEVEL_LOW
-+	 * DVT extra: sllergy,sq52205 at 0x40
++	 * silergy,sy9329 at 0x71, enable pin is gpio3 RK_PC1 GPIO_ACTIVE_HIGH, interrupt pin is gpio1 RK_PA7 IRQ_TYPE_LEVEL_LOW
++	 * DVT extra: silergy,sq52205 at 0x40
 +	 */
 +};
 +
@@ -546,6 +553,7 @@ index 00000000..68c38e74
 +	accelerometer@19 {
 +		compatible = "silan,sc7a20";
 +		reg = <0x19>;
++		status = "disabled";
 +	};
 +};
 +
@@ -554,11 +562,65 @@ index 00000000..68c38e74
 +	pinctrl-0 = <&i2c7m0_xfer>;
 +	status = "okay";
 +
-+	/*
-+	 * EVT: hynetek,husb311 at 0x4e
-+	 * DVT: fcs,fusb302 at 0x22
-+	 * Interrupt: both all gpio0 RK_PC4 IRQ_TYPE_LEVEL_LOW
-+	 */
++	usbc0: usbc@22 {
++		compatible = "fcs,fusb302";
++		reg = <0x22>;
++		interrupt-parent = <&gpio0>;
++		interrupts = <RK_PC4 IRQ_TYPE_LEVEL_LOW>;
++		pinctrl-names = "default";
++		pinctrl-0 = <&usbc0_int>;
++		vbus-supply = <&vbus_typec>;
++
++		usb_con: connector {
++			compatible = "usb-c-connector";
++			label = "USB-C";
++			data-role = "dual";
++			power-role = "dual";
++			try-power-role = "sink";
++			op-sink-microwatt = <1000000>;
++			sink-pdos = <
++				PDO_FIXED(5000, 3000, PDO_FIXED_USB_COMM)
++				PDO_FIXED(9000, 3000, PDO_FIXED_USB_COMM)
++				PDO_FIXED(12300, 3000, PDO_FIXED_USB_COMM)
++				PDO_FIXED(20000, 3000, PDO_FIXED_USB_COMM)
++			>;
++			source-pdos = <
++				PDO_FIXED(5000, 3000, PDO_FIXED_USB_COMM)
++				PDO_FIXED(9000, 3000, PDO_FIXED_USB_COMM)
++				PDO_FIXED(12300, 1800, PDO_FIXED_USB_COMM)
++				PDO_FIXED(20000, 1350, PDO_FIXED_USB_COMM)
++			>;
++
++			ports {
++				#address-cells = <1>;
++				#size-cells = <0>;
++
++				port@0 {
++					reg = <0>;
++
++					usbc0_orien_sw: endpoint {
++						remote-endpoint = <&usbdp_phy0_orientation_switch>;
++					};
++				};
++
++				port@1 {
++					reg = <1>;
++
++					usbc0_role_sw: endpoint {
++						remote-endpoint = <&dwc3_0_role_switch>;
++					};
++				};
++
++				port@2 {
++					reg = <2>;
++
++					dp_altmode_mux: endpoint {
++						remote-endpoint = <&usbdp_phy0_dp_altmode_mux>;
++					};
++				};
++			};
++		};
++	};
 +};
 +
 +&i2s5_8ch {
@@ -594,10 +656,11 @@ index 00000000..68c38e74
 +		device_type = "pci";
 +		bus-range = <0x40 0x4f>;
 +
++		/* WL_HOST_WAKE: gpio0 RK_PA0 */
 +		wifi: wifi@0,0 {
 +			compatible = "pci14e4,44a0"; /* 449d: AP6275P (BCM43752), 44a0: AP6276P (BCM43756) */
 +			reg = <0x410000 0 0 0 0>;
-+			clocks = <&pt7c4337>; /* Not sure */
++			clocks = <&pt7c4337>;
 +			clock-names = "lpo";
 +		};
 +	};
@@ -608,8 +671,8 @@ index 00000000..68c38e74
 +};
 +
 +&pinctrl {
-+	display {
 +#ifdef GPIO_I2C_BASED_DDC
++	display {
 +		gpio_i2c_scl_pin: gpio-i2c-scl-pin {
 +			rockchip,pins = <4 RK_PB7 RK_FUNC_GPIO &pcfg_pull_none>;
 +		};
@@ -617,8 +680,8 @@ index 00000000..68c38e74
 +		gpio_i2c_sda_pin: gpio-i2c-sda-pin {
 +			rockchip,pins = <4 RK_PC0 RK_FUNC_GPIO &pcfg_pull_none>;
 +		};
-+#endif
 +	};
++#endif
 +
 +	ethernet {
 +		gmac1_rstn: gmac1-rstn {
@@ -654,7 +717,7 @@ index 00000000..68c38e74
 +
 +	rtc {
 +		rtc_int_l: rtc-int-l {
-+			rockchip,pins = <0 RK_PB0 RK_FUNC_GPIO &pcfg_pull_none>;
++			rockchip,pins = <0 RK_PB0 RK_FUNC_GPIO &pcfg_pull_up>;
 +		};
 +	};
 +
@@ -665,6 +728,10 @@ index 00000000..68c38e74
 +	};
 +
 +	usb {
++		usbc0_int: usbc0-int {
++			rockchip,pins = <0 RK_PC4 RK_FUNC_GPIO &pcfg_pull_up>;
++		};
++
 +		usb_hub_pwr_en: usb-hub-pwr-en {
 +			rockchip,pins = <0 RK_PD0 RK_FUNC_GPIO &pcfg_pull_none>;
 +		};
@@ -1098,7 +1165,7 @@ index 00000000..68c38e74
 +
 +	bluetooth {
 +		compatible = "brcm,bcm43438-bt"; /* Not sure */
-+		clocks = <&pt7c4337>; /* Not sure */
++		clocks = <&pt7c4337>;
 +		clock-names = "lpo";
 +		interrupt-parent = <&gpio0>;
 +		interrupts = <RK_PC5 IRQ_TYPE_LEVEL_HIGH>;
@@ -1108,8 +1175,6 @@ index 00000000..68c38e74
 +		max-speed = <1500000>;
 +		pinctrl-names = "default";
 +		pinctrl-0 = <&bt_wake_host_irq &bt_wake_pin &bt_reset_pin>;
-+		/* vbat-supply = <&vcc_3v3_s3>; */
-+		/* vddio-supply = <&vcc_1v8_s3>; */
 +	};
 +};
 +
@@ -1122,8 +1187,18 @@ index 00000000..68c38e74
 +};
 +
 +&usb_host0_xhci {
-+	dr_mode = "host";
++	usb-role-switch;
 +	status = "okay";
++
++	port {
++		#address-cells = <1>;
++		#size-cells = <0>;
++
++		dwc3_0_role_switch: endpoint@0 {
++			reg = <0>;
++			remote-endpoint = <&usbc0_role_sw>;
++		};
++	};
 +};
 +
 +&usb_host1_ehci {
@@ -1139,7 +1214,26 @@ index 00000000..68c38e74
 +};
 +
 +&usbdp_phy0 {
++	orientation-switch;
++	mode-switch;
++	sbu1-dc-gpios = <&gpio4 RK_PA1 GPIO_ACTIVE_HIGH>;
++	sbu2-dc-gpios = <&gpio4 RK_PA0 GPIO_ACTIVE_HIGH>;
 +	status = "okay";
++
++	port {
++		#address-cells = <1>;
++		#size-cells = <0>;
++
++		usbdp_phy0_orientation_switch: endpoint@0 {
++			reg = <0>;
++			remote-endpoint = <&usbc0_orien_sw>;
++		};
++
++		usbdp_phy0_dp_altmode_mux: endpoint@1 {
++			reg = <1>;
++			remote-endpoint = <&dp_altmode_mux>;
++		};
++	};
 +};
 +
 +&vop {
