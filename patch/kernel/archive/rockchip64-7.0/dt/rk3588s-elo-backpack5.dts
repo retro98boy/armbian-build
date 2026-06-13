@@ -362,9 +362,8 @@
 
 	/*
 	 * genesys,gl9904 at 0x14 (0x54?), enable pin is gpio3 RK_PC6 GPIO_ACTIVE_LOW
-	 * silergy,sy9329 at 0x71, enable pin is gpio3 RK_PC1 GPIO_ACTIVE_HIGH,
-	 * interrupt pin is gpio1 RK_PA7 IRQ_TYPE_LEVEL_LOW
-	 * DVT extra: sllergy,sq52205 at 0x40
+	 * silergy,sy9329 at 0x71, enable pin is gpio3 RK_PC1 GPIO_ACTIVE_HIGH, interrupt pin is gpio1 RK_PA7 IRQ_TYPE_LEVEL_LOW
+	 * DVT extra: silergy,sq52205 at 0x40
 	 */
 };
 
@@ -506,7 +505,7 @@
 
 	rtc {
 		rtc_int_l: rtc-int-l {
-			rockchip,pins = <0 RK_PB0 RK_FUNC_GPIO &pcfg_pull_none>;
+			rockchip,pins = <0 RK_PB0 RK_FUNC_GPIO &pcfg_pull_up>;
 		};
 	};
 
@@ -990,8 +989,6 @@
 		max-speed = <1500000>;
 		pinctrl-names = "default";
 		pinctrl-0 = <&bt_wake_host_irq &bt_wake_pin &bt_reset_pin>;
-		/* vbat-supply = <&vcc_3v3_s3>; */
-		/* vddio-supply = <&vcc_1v8_s3>; */
 	};
 };
 
