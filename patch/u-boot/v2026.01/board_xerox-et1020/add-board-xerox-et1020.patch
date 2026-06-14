@@ -92,10 +92,10 @@ index 00000000..7653305a
 +CONFIG_ERRNO_STR=y
 diff --git a/dts/upstream/src/arm64/rockchip/rk3399-et1020.dts b/dts/upstream/src/arm64/rockchip/rk3399-et1020.dts
 new file mode 100644
-index 00000000..284fb29e
+index 00000000..8f120019
 --- /dev/null
 +++ b/dts/upstream/src/arm64/rockchip/rk3399-et1020.dts
-@@ -0,0 +1,869 @@
+@@ -0,0 +1,871 @@
 +// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
 +/*
 + * Copyright (c) 2017 Fuzhou Rockchip Electronics Co., Ltd.
@@ -588,6 +588,7 @@ index 00000000..284fb29e
 +	hall-sensor@d {
 +		compatible = "asahi-kasei,ak8963";
 +		reg = <0x0d>;
++		status = "disabled";
 +	};
 +};
 +
@@ -811,6 +812,7 @@ index 00000000..284fb29e
 +		spi-cpol;
 +		interrupt-parent = <&gpio1>;
 +		interrupts = <RK_PC4 IRQ_TYPE_LEVEL_LOW>;
++		status = "disabled";
 +	};
 +};
 +
