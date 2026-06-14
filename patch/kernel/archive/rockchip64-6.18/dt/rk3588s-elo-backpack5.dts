@@ -243,6 +243,7 @@
 	phy-handle = <&jl2101>;
 	phy-mode = "rgmii-rxid";
 	tx_delay = <77>;
+	clock_in_out = "output";
 	pinctrl-0 = <&gmac1_miim
 		     &gmac1_tx_bus2
 		     &gmac1_rx_bus2

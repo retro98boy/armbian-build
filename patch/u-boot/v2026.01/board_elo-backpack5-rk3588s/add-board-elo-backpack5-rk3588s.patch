@@ -162,10 +162,10 @@ index 00000000..fbbae294
 +CONFIG_ERRNO_STR=y
 diff --git a/dts/upstream/src/arm64/rockchip/rk3588s-elo-backpack5.dts b/dts/upstream/src/arm64/rockchip/rk3588s-elo-backpack5.dts
 new file mode 100644
-index 00000000..9e7e69d7
+index 00000000..d998f535
 --- /dev/null
 +++ b/dts/upstream/src/arm64/rockchip/rk3588s-elo-backpack5.dts
-@@ -0,0 +1,1084 @@
+@@ -0,0 +1,1085 @@
 +// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
 +/*
 + * Copyright (c) 2026 retro98boy <retro98boy@qq.com>
@@ -410,6 +410,7 @@ index 00000000..9e7e69d7
 +	phy-handle = <&jl2101>;
 +	phy-mode = "rgmii-rxid";
 +	tx_delay = <77>;
++	clock_in_out = "output";
 +	pinctrl-0 = <&gmac1_miim
 +		     &gmac1_tx_bus2
 +		     &gmac1_rx_bus2
