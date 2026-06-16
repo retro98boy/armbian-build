@@ -1,7 +1,7 @@
-From 981fa9dd6ff2333002417c1b90ff9a5d684e400e Mon Sep 17 00:00:00 2001
+From 67e46191a735b118e0ddaa20cbdcb601841b8b48 Mon Sep 17 00:00:00 2001
 From: Joel Selvaraj <jo@jsfamily.in>
 Date: Wed, 3 Feb 2021 19:54:45 +0000
-Subject: [PATCH 24/62] power: supply: Add driver for Qualcomm PMIC fuel gauge
+Subject: [PATCH] power: supply: Add driver for Qualcomm PMIC fuel gauge
 
 Ths driver supports the fuel gauge hardware available on PMICs such as PMI8994,
 as well as gen 3 fuel gauge hardware available on PMI8998.
@@ -38,12 +38,12 @@ Signed-off-by: Jiali Chen <chenjiali@radxa.com>
  create mode 100644 drivers/power/supply/qcom_fg.c
 
 diff --git a/drivers/power/supply/Kconfig b/drivers/power/supply/Kconfig
-index 6e0559e6baed..e138bdc837a7 100644
+index 83392ed6a..bba61890c 100644
 --- a/drivers/power/supply/Kconfig
 +++ b/drivers/power/supply/Kconfig
-@@ -1106,4 +1106,12 @@ config FUEL_GAUGE_MM8013
- 	  the state of charge, temperature, cycle count, actual and design
- 	  capacity, etc.
+@@ -1165,4 +1165,12 @@ config MACSMC_POWER
+ 
+ 	  Say Y or M here if you have an Apple Silicon based Mac.
  
 +config BATTERY_QCOM_FG
 +	tristate "Qualcomm PMIC fuel gauge driver"
@@ -55,17 +55,19 @@ index 6e0559e6baed..e138bdc837a7 100644
 +
  endif # POWER_SUPPLY
 diff --git a/drivers/power/supply/Makefile b/drivers/power/supply/Makefile
-index 60aec804ca8f..921cf6aac741 100644
+index 7ee839dca..b95fa0014 100644
 --- a/drivers/power/supply/Makefile
 +++ b/drivers/power/supply/Makefile
-@@ -126,3 +126,4 @@ obj-$(CONFIG_CHARGER_SURFACE)	+= surface_charger.o
+@@ -129,5 +129,6 @@ obj-$(CONFIG_CHARGER_SURFACE)	+= surface_charger.o
  obj-$(CONFIG_BATTERY_UG3105)	+= ug3105_battery.o
  obj-$(CONFIG_CHARGER_QCOM_SMB2)	+= qcom_smbx.o
  obj-$(CONFIG_FUEL_GAUGE_MM8013)	+= mm8013.o
 +obj-$(CONFIG_BATTERY_QCOM_FG)	+= qcom_fg.o
+ obj-$(CONFIG_MACSMC_POWER)	+= macsmc-power.o
+ obj-$(CONFIG_CHARGER_MAX77759)	+= max77759_charger.o
 diff --git a/drivers/power/supply/qcom_fg.c b/drivers/power/supply/qcom_fg.c
 new file mode 100644
-index 000000000000..f8dd93aa23c7
+index 000000000..13cd0f683
 --- /dev/null
 +++ b/drivers/power/supply/qcom_fg.c
 @@ -0,0 +1,1325 @@
@@ -1395,5 +1397,5 @@ index 000000000000..f8dd93aa23c7
 +MODULE_DESCRIPTION("Qualcomm PMIC Fuel Gauge Driver");
 +MODULE_LICENSE("GPL v2");
 -- 
-2.47.3
+2.54.0
 
