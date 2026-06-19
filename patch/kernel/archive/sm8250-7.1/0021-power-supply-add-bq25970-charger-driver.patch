@@ -1,23 +1,23 @@
-From c262fbba641691d1ad50d5e36f1ddf9f5c2be27b Mon Sep 17 00:00:00 2001
+From 2819c321f9629a7b3c97adfc7daaaae1917ceb07 Mon Sep 17 00:00:00 2001
 From: Jianhua Lu <lujianhua000@gmail.com>
 Date: Wed, 18 Sep 2024 14:27:53 +0800
-Subject: [PATCH 21/62] power: supply: add bq25970 charger driver
+Subject: [PATCH] power: supply: add bq25970 charger driver
 
 Signed-off-by: Jiali Chen <chenjiali@radxa.com>
 ---
  drivers/power/supply/Kconfig           |    9 +
  drivers/power/supply/Makefile          |    1 +
- drivers/power/supply/bq25970_charger.c | 2321 ++++++++++++++++++++++++
+ drivers/power/supply/bq25970_charger.c | 2319 ++++++++++++++++++++++++
  drivers/power/supply/bq25970_reg.h     |  821 +++++++++
- 4 files changed, 3152 insertions(+)
+ 4 files changed, 3150 insertions(+)
  create mode 100644 drivers/power/supply/bq25970_charger.c
  create mode 100644 drivers/power/supply/bq25970_reg.h
 
 diff --git a/drivers/power/supply/Kconfig b/drivers/power/supply/Kconfig
-index 79ddb006e2da..6e0559e6baed 100644
+index 83392ed6a..4ed8f85c4 100644
 --- a/drivers/power/supply/Kconfig
 +++ b/drivers/power/supply/Kconfig
-@@ -775,6 +775,15 @@ config CHARGER_BQ25890
+@@ -830,6 +830,15 @@ config CHARGER_BQ25890
  	help
  	  Say Y to enable support for the TI BQ25890 battery charger.
  
@@ -34,12 +34,12 @@ index 79ddb006e2da..6e0559e6baed 100644
  	tristate "TI BQ25980 battery charger driver"
  	depends on I2C
 diff --git a/drivers/power/supply/Makefile b/drivers/power/supply/Makefile
-index f943c9150b32..60aec804ca8f 100644
+index 7ee839dca..f5b51ef05 100644
 --- a/drivers/power/supply/Makefile
 +++ b/drivers/power/supply/Makefile
-@@ -98,6 +98,7 @@ obj-$(CONFIG_CHARGER_BQ24257)	+= bq24257_charger.o
- obj-$(CONFIG_CHARGER_BQ24735)	+= bq24735-charger.o
+@@ -104,6 +104,7 @@ obj-$(CONFIG_CHARGER_BQ24735)	+= bq24735-charger.o
  obj-$(CONFIG_CHARGER_BQ2515X)	+= bq2515x_charger.o
+ obj-$(CONFIG_CHARGER_BQ257XX)	+= bq257xx_charger.o
  obj-$(CONFIG_CHARGER_BQ25890)	+= bq25890_charger.o
 +obj-$(CONFIG_CHARGER_BQ25970)	+= bq25970_charger.o
  obj-$(CONFIG_CHARGER_BQ25980)	+= bq25980_charger.o
@@ -47,10 +47,10 @@ index f943c9150b32..60aec804ca8f 100644
  obj-$(CONFIG_CHARGER_RK817)	+= rk817_charger.o
 diff --git a/drivers/power/supply/bq25970_charger.c b/drivers/power/supply/bq25970_charger.c
 new file mode 100644
-index 000000000000..1aeb1873f9fd
+index 000000000..5b4e8ed04
 --- /dev/null
 +++ b/drivers/power/supply/bq25970_charger.c
-@@ -0,0 +1,2321 @@
+@@ -0,0 +1,2319 @@
 +/*
 + * BQ2570x battery charging driver
 + *
@@ -67,7 +67,6 @@ index 000000000000..1aeb1873f9fd
 +
 +#define pr_fmt(fmt)	"[bq2597x] %s: " fmt, __func__
 +
-+#include <linux/gpio.h>
 +#include <linux/i2c.h>
 +#include <linux/init.h>
 +#include <linux/interrupt.h>
@@ -80,7 +79,6 @@ index 000000000000..1aeb1873f9fd
 +#include <linux/delay.h>
 +#include <linux/of.h>
 +#include <linux/of_device.h>
-+#include <linux/of_gpio.h>
 +#include <linux/err.h>
 +#include <linux/regulator/driver.h>
 +#include <linux/regulator/of_regulator.h>
@@ -2374,7 +2372,7 @@ index 000000000000..1aeb1873f9fd
 +MODULE_AUTHOR("Texas Instruments");
 diff --git a/drivers/power/supply/bq25970_reg.h b/drivers/power/supply/bq25970_reg.h
 new file mode 100644
-index 000000000000..7f4515befc6d
+index 000000000..7f4515bef
 --- /dev/null
 +++ b/drivers/power/supply/bq25970_reg.h
 @@ -0,0 +1,821 @@
@@ -3200,5 +3198,5 @@ index 000000000000..7f4515befc6d
 +
 +#endif
 -- 
-2.47.3
+2.54.0
 
