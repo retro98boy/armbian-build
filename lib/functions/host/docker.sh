@@ -368,7 +368,12 @@ function docker_cli_build_dockerfile() {
 	if [[ "${do_force_pull:-yes}" == "yes" ]]; then
 		display_alert "Pulling" "${DOCKER_ARMBIAN_BASE_IMAGE}" "info"
 		local pull_failed="yes"
-		run_host_command_logged docker pull "${DOCKER_ARMBIAN_BASE_IMAGE}" && pull_failed="no"
+		# Retry the pull: ghcr.io intermittently returns "error from registry:
+		# denied" under load or on a transient token hiccup even for a
+		# published, accessible image. A single failure would otherwise drop us
+		# into a needless (and much slower) from-scratch build. Retry a few
+		# times before giving up; only then fall back to scratch.
+		sleep_seconds=10 do_with_retries 3 run_host_command_logged docker pull "${DOCKER_ARMBIAN_BASE_IMAGE}" && pull_failed="no"
 
 		if [[ "${pull_failed}" == "no" ]]; then
 			local_image_sha="$(docker images --no-trunc --quiet "${DOCKER_ARMBIAN_BASE_IMAGE}")"
@@ -397,12 +402,28 @@ function docker_cli_build_dockerfile() {
 
 function docker_cli_prepare_launch() {
 	display_alert "Preparing" "common Docker arguments" "debug"
+
+	# The container otherwise inherits the Docker daemon's default open-file limit
+	# (classically 1024 soft), independent of the host's own (possibly generous)
+	# limit. That is too low for the parallel info-gatherer (cpu*4 workers, each
+	# holding pipes) and it dies with "OSError: [Errno 24] Too many open files".
+	# Pass the HOST's hard limit through so the container matches the host. The
+	# host hard limit can never exceed the kernel's fs.nr_open, and the container
+	# shares that kernel, so this value is always a valid --ulimit.
+	declare _docker_nofile_hard
+	_docker_nofile_hard="$(ulimit -H -n 2>/dev/null || true)"
+	[[ "${_docker_nofile_hard}" == "unlimited" || -z "${_docker_nofile_hard}" ]] && _docker_nofile_hard=1048576
+
 	declare -g -a DOCKER_ARGS=(
 		"--rm" # side effect - named volumes are considered not attached to anything and are removed on "docker volume prune", since container was removed.
 
 		"--cap-add=SYS_ADMIN"  # add only required capabilities instead
 		"--cap-add=MKNOD"      # (though MKNOD should be already present)
 		"--cap-add=SYS_PTRACE" # CAP_SYS_PTRACE is required for systemd-detect-virt in some cases @TODO: rpardini: so lets eliminate it @TODO: rpardini maybe it's dead already?
+
+		# Match the host's open-file limit (see above) so the parallel info-gatherer
+		# isn't capped by the container's default 1024 and hit Errno 24.
+		"--ulimit" "nofile=${_docker_nofile_hard}:${_docker_nofile_hard}"
 
 		# Pass env var ARMBIAN_RUNNING_IN_CONTAINER to indicate we're running under Docker. This is also set in the Dockerfile; make sure.
 		"--env" "ARMBIAN_RUNNING_IN_CONTAINER=yes"
@@ -884,10 +905,18 @@ function docker_setup_auto_pull_cronjob() {
 		fi
 		sudo chmod +x "${wrapper_script}" || true
 
-		# Create/update cron file
+		# Create/update cron file. Guard the write like the wrapper script above:
+		# if the tee fails (sudo refused, /etc read-only, cron not really
+		# present, ...) we must NOT go on to chmod a file that was never
+		# created — that is what printed the confusing
+		# "chmod: cannot access '${cron_file}': No such file or directory".
+		# Treat it as best-effort and bail gracefully, same as the wrapper path.
 		display_alert "Creating/updating Docker auto-pull cronjob" "${cron_file}" "info"
-		echo "${cron_content}" | sudo tee "${cron_file}" > /dev/null
-		sudo chmod 600 "${cron_file}"
+		if ! echo "${cron_content}" | sudo tee "${cron_file}" > /dev/null 2>&1; then
+			display_alert "Docker auto-pull" "failed to create cronjob ${cron_file} (sudo/permissions?)" "warn"
+			return 0
+		fi
+		sudo chmod 600 "${cron_file}" || true
 
 		# Store hash for next time
 		sudo mkdir -p "$(dirname "${hash_file}")"
