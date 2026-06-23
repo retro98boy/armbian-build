@@ -3,7 +3,7 @@ function add_host_dependencies__abl_host_deps() {
 		return 0
 	fi
 
-	declare -g EXTRA_BUILD_DEPS="${EXTRA_BUILD_DEPS} mkbootimg"
+	EXTRA_BUILD_DEPS+=("build-tools::mkbootimg")
 }
 
 function post_build_image__900_convert_to_abl_img() {
