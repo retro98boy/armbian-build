@@ -603,6 +603,15 @@ function kernel_package_callback_linux_headers() {
 				tar -C . -xzf include/generated/.armbian-build.tar.gz
 				rm -f include/generated/.armbian-build.tar.gz
 			fi
+
+			# linux-image postinst already runs /etc/kernel/postinst.d hooks, including DKMS,
+			# but that can happen before these headers have finished preparing scripts/tools.
+			# Run DKMS once more after headers preparation so external modules can build
+			# against fully usable headers during package installation.
+			if [[ -x /usr/lib/dkms/dkms_autoinstaller ]]; then
+				echo "Re-running DKMS autoinstaller after kernel-headers preparation (${kernel_version_family})."
+				/usr/lib/dkms/dkms_autoinstaller start "${kernel_version_family}" || true
+			fi
 		EOT_POSTINST_FINISH
 	)
 }
