@@ -30,6 +30,7 @@ dtbo-$(CONFIG_ARCH_ROCKCHIP) += \
 	rockchip-rk3328-mksklipad50-enable-rtc-end1.dtbo \
 	rockchip-rk3328-mksklipad50-enable-v4l2.dtbo \
 	rockchip-rk3328-mkspi-disable-lcd-spi.dtbo \
+	rockchip-rk3328-nanopi-neo3-pwm-fan.dtbo \
 	rockchip-rk3328-opp-1.4ghz.dtbo \
 	rockchip-rk3328-opp-1.5ghz.dtbo \
 	rockchip-rk3328-spi-spidev.dtbo \
@@ -121,7 +122,8 @@ dtbo-$(CONFIG_ARCH_ROCKCHIP) += \
 	rockchip-rk3588-nanopi-m6-display-dsi1-yx35.dtbo \
 	rockchip-rk3588-nanopc-t6-mmc-frequency.dtbo \
 	rockchip-rk3588-odroidm2-weather-board-zero.dtbo \
-	rockchip-rk3588-odroidm2-display-vu8s.dtbo
+	rockchip-rk3588-odroidm2-display-vu8s.dtbo \
+	rockchip-rk3588-orangepi-5-ap6275p.dtbo
 
 scr-$(CONFIG_ARCH_ROCKCHIP) += \
        rockchip-fixup.scr
