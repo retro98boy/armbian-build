@@ -406,10 +406,10 @@ driver_rtw88() {
 
 driver_rtl8852bs() {
 	# Wireless driver for Realtek 8852BS SDIO Wireless driver used in BananaPi F3 and Armsom Sige5
-	if linux-version compare "${version}" ge 6.1 && linux-version compare "${version}" lt 7.2 && [[ "${LINUXFAMILY}" == spacemit || "${LINUXFAMILY}" == rk35xx || "${LINUXFAMILY}" == rockchip64 ]]; then
+	if linux-version compare "${version}" ge 6.1 && linux-version compare "${version}" lt 7.3 && [[ "${LINUXFAMILY}" == spacemit || "${LINUXFAMILY}" == rk35xx || "${LINUXFAMILY}" == rockchip64 ]]; then
 
 		# Attach to specific commit
-		local rtl8852bs_ver='commit:35d3e2660fd912c36777cc50dd43b3fbc805d56a' # Commit date: May 17, 2026 (please update when updating commit ref)
+		local rtl8852bs_ver='commit:916053dd2805d16c458d92c3216c731ec956eb12' # Commit date: Aug 06, 2026 (please update when updating commit ref)
 
 		display_alert "Adding" "Wireless drivers for Realtek 8852BS SDIO chipset ${rtl8852bs_ver}" "info"
 
@@ -459,9 +459,6 @@ driver_rtl8852bs() {
 				sed -i "s/CONFIG_PLATFORM_SPACEMIT = n/CONFIG_PLATFORM_SPACEMIT = y/g" "$kerneldir/drivers/net/wireless/realtek/rtl8852bs/Makefile"
 				;;
 		esac
-
-		# Patches
-		process_patch_file "${SRC}/patch/misc/wireless-rtl8852bs-Update-rtw_regd_init-for-6.1.patch" "applying"
 	fi
 }
 
@@ -518,10 +515,10 @@ driver_uwe5622() {
 	# Standalone driver with inline version guards for kernels 5.15-7.1
 	# Supports Allwinner (sun*) and Rockchip (rockchip64, rk35xx) platforms
 
-	if linux-version compare "${version}" ge 5.15 && linux-version compare "${version}" lt 7.2 && [[ "$LINUXFAMILY" == sun* || "$LINUXFAMILY" == rockchip64 || "$LINUXFAMILY" == rk35xx ]]; then
+	if linux-version compare "${version}" ge 5.15 && linux-version compare "${version}" lt 7.3 && [[ "$LINUXFAMILY" == sun* || "$LINUXFAMILY" == rockchip64 || "$LINUXFAMILY" == rk35xx ]]; then
 
 		# Attach to specific commit
-		local uwe5622ver='commit:fe49fbeba25be33a581f276ff33e051bb48f166c' # Commit date: Aug 02, 2026 (please update when updating commit ref)
+		local uwe5622ver='commit:ce59d2aafbdad2cd740ee203053ccfba058a20bc' # Commit date: Aug 06, 2026 (please update when updating commit ref)
 
 		display_alert "Adding" "Unisoc uwe5622 driver ${uwe5622ver}" "info"
 
