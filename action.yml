@@ -154,12 +154,24 @@ runs:
         path: custom
 
     - shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.armbian_token }}
       run: |
 
         # Resolve base version (prefer workflow input if provided)
         BASE_VERSION="${{ inputs.armbian_version }}"
         if [ -z "$BASE_VERSION" ]; then
-          BASE_VERSION="$(jq -r '.version' os/stable.json)"
+          # os/stable.json is deprecated. Derive the base from the latest stable
+          # release of armbian/ci -- the repo that owns the version series. ci also
+          # publishes -trunk.N nightlies, so match only clean MAJOR.MINOR.PATCH tags
+          # and take the highest with sort -V (release order/date is not reliable).
+          BASE_VERSION="$(gh api --paginate repos/armbian/ci/releases \
+            --jq '.[] | .tag_name | select(test("^[0-9]+[.][0-9]+[.][0-9]+$"))' \
+            | sort -V | tail -1)"
+        fi
+        if [ -z "$BASE_VERSION" ]; then
+          echo "::error::Could not resolve base version: no armbian_version input and no armbian/ci stable release found"
+          exit 1
         fi
 
         # Preserve optional 'v' prefix but strip it for math
@@ -234,10 +246,32 @@ runs:
     - name: Sign
       shell: bash
       if: ${{ inputs.armbian_pgp_password != '' }}
+      env:
+        ARMBIAN_PGP_PASSWORD: ${{ inputs.armbian_pgp_password }}
       run: |
-        printf '%s' "${{ inputs.armbian_pgp_password }}" | \
-        gpg --passphrase-fd 0 --armor --detach-sign --pinentry-mode loopback --batch --yes \
-        build/output/images/*.img*.xz
+        set -euo pipefail
+
+        # Sign whatever the build actually produced. The glob used to be
+        # *.img*.xz, which is only the classic compressed raw image: an
+        # image-output-iso build emits a .iso and image-output-qcow2 emits an
+        # uncompressed .img.qcow2, so the glob matched nothing, gpg received the
+        # literal pattern and the job died with "can't open ... No such file".
+        mapfile -t images < <(find build/output/images -maxdepth 1 -type f \
+          \( -name '*.img*.xz' -o -name '*.iso' -o -name '*.qcow2' \) | sort)
+
+        if [[ ${#images[@]} -eq 0 ]]; then
+          echo "::error::Sign: no image artifacts found in build/output/images"
+          ls -la build/output/images || true
+          exit 1
+        fi
+
+        # One gpg call per file: --detach-sign takes a single input, and this
+        # way each artifact gets its own .asc.
+        for image in "${images[@]}"; do
+          echo "Signing $(basename "${image}")"
+          printf '%s' "${ARMBIAN_PGP_PASSWORD}" | \
+            gpg --passphrase-fd 0 --armor --detach-sign --pinentry-mode loopback --batch --yes "${image}"
+        done
 
     - name: "Generate release assets manifest"
       shell: bash
@@ -286,6 +320,9 @@ runs:
             ("hyperv.zip.xz",  "hyperv.zip"),
             ("hyperv.zip.zst", "hyperv.zip"),
             ("hyperv.zip",     "hyperv.zip"),
+            ("iso.xz",         "iso"),
+            ("iso.zst",        "iso"),
+            ("iso",            "iso"),
             ("img.xz",         "img"),
             ("img.zst",        "img"),
             ("img",            "img"),
@@ -294,7 +331,7 @@ runs:
         # image_format -> redi_url variant suffix (canonical generator
         # appends "-qcow2" / "-hyperv" to the friendly redirect path so a
         # board can serve multiple formats at distinct URLs).
-        FORMAT_SUFFIX = {"img.qcow2": "qcow2", "img.vhdx": "vhdx", "hyperv.zip": "hyperv"}
+        FORMAT_SUFFIX = {"img.qcow2": "qcow2", "img.vhdx": "vhdx", "hyperv.zip": "hyperv", "iso": "iso"}
 
         # Filename: Armbian[-unofficial]_{version}_{Board}_{distro}_{branch}_{kernel}[_{variant[.app]}]
         # Variant token is optional (some legacy / hand-crafted builds omit it).
