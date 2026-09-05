@@ -95,9 +95,7 @@ function post_family_tweaks_bsp__damo-cockpit8250_alsa-ucm() {
 	install -Dm644 "${SRC}/packages/bsp/damo-cockpit8250/damo-cockpit8250.conf" \
 		"${destination}/usr/share/alsa/ucm2/Qualcomm/sm8250/damo-cockpit8250.conf"
 
-	if [ ! -d "${destination}/usr/share/alsa/ucm2/conf.d/sm8250" ]; then
-		mkdir -p "${destination}/usr/share/alsa/ucm2/conf.d/sm8250"
-	fi
-	ln -sfv /usr/share/alsa/ucm2/Qualcomm/sm8250/damo-cockpit8250.conf \
+	mkdir -p "${destination}/usr/share/alsa/ucm2/conf.d/sm8250"
+	ln -sfv ../../Qualcomm/sm8250/damo-cockpit8250.conf \
 		"${destination}/usr/share/alsa/ucm2/conf.d/sm8250/damo-cockpit8250.conf"
 }

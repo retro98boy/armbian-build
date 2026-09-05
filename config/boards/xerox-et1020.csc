@@ -32,10 +32,8 @@ function post_family_tweaks_bsp__xerox-et1020() {
 	install -Dm644 "${SRC}/packages/bsp/xerox-et1020/xerox-et1020.conf" \
 		"${destination}/usr/share/alsa/ucm2/Rockchip/xerox-et1020/xerox-et1020.conf"
 
-	if [ ! -d "${destination}/usr/share/alsa/ucm2/conf.d/simple-card" ]; then
-		mkdir -p "${destination}/usr/share/alsa/ucm2/conf.d/simple-card"
-	fi
-	ln -sfv /usr/share/alsa/ucm2/Rockchip/xerox-et1020/xerox-et1020.conf \
+	mkdir -p "${destination}/usr/share/alsa/ucm2/conf.d/simple-card"
+	ln -sfv ../../Rockchip/xerox-et1020/xerox-et1020.conf \
 		"${destination}/usr/share/alsa/ucm2/conf.d/simple-card/xerox-et1020.conf"
 }
 
