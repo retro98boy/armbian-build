@@ -1,0 +1,141 @@
+From 1b30a3e304b400d044957403c1618298c35ead30 Mon Sep 17 00:00:00 2001
+From: retro98boy <retro98boy@qq.com>
+Date: Tue, 1 Sep 2026 14:49:13 +0800
+Subject: [PATCH] power: supply: rk817-charger: Configure USB input limit from
+ DT
+
+---
+ drivers/power/supply/rk817_charger.c | 71 ++++++++++++++++++++++++++++
+ 1 file changed, 71 insertions(+)
+
+diff --git a/drivers/power/supply/rk817_charger.c b/drivers/power/supply/rk817_charger.c
+index d063d61ce27d..930533dba95e 100644
+--- a/drivers/power/supply/rk817_charger.c
++++ b/drivers/power/supply/rk817_charger.c
+@@ -70,6 +70,25 @@ module_param_named(dbg_level, dbg_enable, int, 0644);
+ #define INPUT_450MA		450
+ #define INPUT_1500MA	1500
+ 
++struct rk817_usb_input_current_limit {
++	u32 microamp;
++	u8 reg;
++};
++
++static const struct rk817_usb_input_current_limit
++rk817_usb_input_current_limits[] = {
++	{ 80000, 0x1 },
++	{ 450000, 0x0 },
++	{ 850000, 0x2 },
++	{ 1500000, 0x3 },
++	{ 1750000, 0x4 },
++	{ 2000000, 0x5 },
++	{ 2500000, 0x6 },
++	{ 3000000, 0x7 },
++};
++
++#define RK817_USB_INPUT_CURRENT_DEFAULT_UA	1500000
++
+ #define CURRENT_TO_ADC(current, samp_res)	\
+ 	(current * 1000 * samp_res / 172)
+ 
+@@ -323,6 +342,7 @@ struct rk817_charger {
+ 
+ 	u32 max_input_current;
+ 	u32 min_input_voltage;
++	u32 usb_input_current_limit_ua;
+ 
+ 	u32 max_chrg_current;
+ 	u32 max_chrg_voltage;
+@@ -494,6 +514,31 @@ static int rk817_charge_field_force_write(struct rk817_charger *charge,
+ 	return regmap_field_force_write(charge->rmap_fields[field_id], val);
+ }
+ 
++static int rk817_usb_input_current_to_reg(u32 microamp)
++{
++	int i;
++
++	for (i = 0; i < ARRAY_SIZE(rk817_usb_input_current_limits); i++)
++		if (microamp == rk817_usb_input_current_limits[i].microamp)
++			return rk817_usb_input_current_limits[i].reg;
++
++	return -EINVAL;
++}
++
++static int rk817_set_usb_input_current_limit(struct rk817_charger *charge)
++{
++	int reg;
++
++	reg = rk817_usb_input_current_to_reg(
++		charge->usb_input_current_limit_ua);
++	if (reg < 0)
++		return reg;
++
++	return regmap_write_bits(charge->regmap, RK817_PMIC_CHRG_IN,
++				RK817_USB_ILIM_SEL | RK817_USB_ILIM_EN,
++				reg | RK817_USB_ILIM_EN);
++}
++
+ static int rk817_charge_get_otg_state(struct rk817_charger *charge)
+ {
+ 	return regulator_is_enabled(charge->otg5v_rdev);
+@@ -1293,6 +1338,8 @@ static int rk817_charge_usb_init(struct rk817_charger *charge)
+ 
+ static void rk817_charge_pre_init(struct rk817_charger *charge)
+ {
++	int ret;
++
+ 	charge->max_chrg_current = charge->pdata->max_chrg_current;
+ 	charge->max_input_current = charge->pdata->max_input_current;
+ 	charge->max_chrg_voltage = charge->pdata->max_chrg_voltage;
+@@ -1319,6 +1366,11 @@ static void rk817_charge_pre_init(struct rk817_charger *charge)
+ 	rk817_charge_enable_charge(charge);
+ 
+ 	rk817_charge_set_charge_clock(charge, CHRG_CLK_2M);
++
++	ret = rk817_set_usb_input_current_limit(charge);
++	if (ret)
++		dev_err(charge->dev,
++			"failed to set USB input current limit: %d\n", ret);
+ }
+ 
+ static void rk817_chage_debug(struct rk817_charger *charge)
+@@ -1367,6 +1419,19 @@ static int rk817_charge_parse_dt(struct rk817_charger *charge)
+ 		return -ENOMEM;
+ 
+ 	charge->pdata = pdata;
++	charge->usb_input_current_limit_ua =
++		RK817_USB_INPUT_CURRENT_DEFAULT_UA;
++	ret = of_property_read_u32(np, "rockchip,input-current-limit-microamp",
++				   &charge->usb_input_current_limit_ua);
++	if (ret && ret != -EINVAL)
++		return dev_err_probe(dev, ret,
++				     "failed to read USB input current limit\n");
++	if (rk817_usb_input_current_to_reg(
++			charge->usb_input_current_limit_ua) < 0)
++		return dev_err_probe(dev, -EINVAL,
++				     "invalid USB input current limit: %u uA\n",
++				     charge->usb_input_current_limit_ua);
++
+ 	pdata->max_chrg_current = DEFAULT_CHRG_CURRENT;
+ 	pdata->max_input_current = DEFAULT_INPUT_CURRENT;
+ 	pdata->max_chrg_voltage = DEFAULT_CHRG_VOLTAGE;
+@@ -1490,10 +1555,16 @@ static void rk817_charge_irq_delay_work(struct work_struct *work)
+ 			queue_delayed_work(charge->usb_charger_wq, &charge->usb_work,
+ 					   msecs_to_jiffies(10));
+ 	} else if (charge->plugout_trigger) {
++		int ret;
++
+ 		DBG("pmic: plug out\n");
+ 		charge->plugout_trigger = 0;
+ 		rk817_charge_set_chrg_param(charge, USB_TYPE_NONE_CHARGER);
+ 		rk817_charge_set_chrg_param(charge, DC_TYPE_NONE_CHARGER);
++		ret = rk817_set_usb_input_current_limit(charge);
++		if (ret)
++			dev_err(charge->dev,
++				"failed to restore USB input current limit: %d\n", ret);
+ 	} else {
+ 		DBG("pmic: unknown irq\n");
+ 	}
+-- 
+2.55.0
+
