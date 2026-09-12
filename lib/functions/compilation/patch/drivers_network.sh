@@ -51,7 +51,7 @@ driver_rtl8189ES() {
 	if linux-version compare "${version}" ge 3.14; then
 
 		# Attach to specific commit (was "branch:master")
-		local rtl8189esver='commit:6fbc1014694944629c20d9e9dd504f1ea51ddd43' # Commit date: Sep 2nd 2026 (please update when updating commit ref)
+		local rtl8189esver='commit:c204f1311040d78732c04f25a507fb3fbbf08170' # Commit date: Sep 9th 2026 (please update when updating commit ref)
 
 		display_alert "Adding" "Wireless drivers for Realtek 8189ES chipsets ${rtl8189esver}" "info"
 
@@ -95,7 +95,7 @@ driver_rtl8189FS() {
 	if linux-version compare "${version}" ge 3.14; then
 
 		# Attach to specific commit (was "branch:rtl8189fs")
-		local rtl8189fsver='commit:be148d226d22214a173e5b2dfe4287e53685ceda' # Commit date: Sep 2nd 2026 (please update when updating commit ref)
+		local rtl8189fsver='commit:1c2f16802d094e8a316b4cdac7285a6fe00ecd4f' # Commit date: Sep 9th 2026 (please update when updating commit ref)
 
 		display_alert "Adding" "Wireless drivers for Realtek 8189FS chipsets ${rtl8189fsver}" "info"
 
@@ -430,7 +430,7 @@ driver_rtl8852bs() {
 	if linux-version compare "${version}" ge 6.1 && [[ "${LINUXFAMILY}" == spacemit || "${LINUXFAMILY}" == rk35xx || "${LINUXFAMILY}" == rockchip64 ]]; then
 
 		# Attach to specific commit
-		local rtl8852bs_ver='commit:9dc6d671bc64127efee60937701f73691c8fdda8' # Commit date: Sep 4, 2026 (please update when updating commit ref)
+		local rtl8852bs_ver='commit:643a4990752ad4761c2ad216901257adfd4fd8db' # Commit date: Sep 10, 2026 (please update when updating commit ref)
 
 		display_alert "Adding" "Wireless drivers for Realtek 8852BS SDIO chipset ${rtl8852bs_ver}" "info"
 
@@ -538,7 +538,7 @@ driver_uwe5622() {
 	if linux-version compare "${version}" ge 5.15 && [[ "$LINUXFAMILY" == sun* || "$LINUXFAMILY" == rockchip64 || "$LINUXFAMILY" == rk35xx ]]; then
 
 		# Attach to specific commit
-		local uwe5622ver='commit:b64c5d6c36015049bdc34aad5f7b307545bfa29c' # Commit date: Sep 1, 2026 (please update when updating commit ref)
+		local uwe5622ver='commit:6eb218457c35cc4862f43a694708f74cf03370eb' # Commit date: Sep 9, 2026 (please update when updating commit ref)
 
 		display_alert "Adding" "Wireless drivers for Unisoc uwe5622 driver ${uwe5622ver}" "info"
 
@@ -676,7 +676,7 @@ driver_rtl8723DS() {
 	if linux-version compare "${version}" ge 5.0 && [[ "$LINUXFAMILY" == rockchip64 ]]; then
 
 		# Attach to specific commit (was "branch:master")
-		local rtl8723dsver='commit:13c56416cb9dea2ccf9d351390ad0e9b064ac6a3' # Commit date: Sep 2nd 2026 (please update when updating commit ref)
+		local rtl8723dsver='commit:b5c8a00c52918c2f98c000551b0c5fc5e365f87e' # Commit date: Sep 9th 2026 (please update when updating commit ref)
 
 		display_alert "Adding" "Wireless drivers for Realtek 8723DS chipsets ${rtl8723dsver}" "info"
 
@@ -705,10 +705,6 @@ driver_rtl8723DS() {
 		sed -i '/source "drivers\/net\/wireless\/ti\/Kconfig"/a source "drivers\/net\/wireless\/rtl8723ds\/Kconfig"' \
 			"$kerneldir/drivers/net/wireless/Kconfig"
 
-		process_patch_file "${SRC}/patch/misc/wireless-rtl8723ds-Fix-p2p-go-advertising.patch" "applying"
-
-		# fix compilation for kernels >= 5.4
-		process_patch_file "${SRC}/patch/misc/wireless-rtl8723ds-Fix-VFS-import.patch" "applying"
 		display_alert "Done adding" "Wireless drivers for Realtek 8723DS chipsets ${rtl8723dsver}" "info"
 	else
 		display_alert "Skipping" "Wireless drivers for Realtek 8723DS chipsets" "info"
