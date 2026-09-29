@@ -1,0 +1,55 @@
+From 3c1a5758e2d7b8e72bd62022968fc7efa9e29080 Mon Sep 17 00:00:00 2001
+From: retro98boy <retro98boy@qq.com>
+Date: Fri, 25 Sep 2026 14:52:00 +0800
+Subject: [PATCH] drm/msm/dpu: align RGB DSC video width with DSI timing
+
+---
+ .../drm/msm/disp/dpu1/dpu_encoder_phys_vid.c  | 30 ++++++++++++++++---
+ 1 file changed, 26 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder_phys_vid.c b/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder_phys_vid.c
+index ba810f26e..e7bdb2b0d 100644
+--- a/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder_phys_vid.c
++++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder_phys_vid.c
+@@ -130,12 +130,34 @@ static void drm_mode_to_intf_timing_params(
+ 	if (phys_enc->hw_intf->cap->type != INTF_DP && timing->compression_en) {
+ 		struct drm_dsc_config *dsc =
+ 		       dpu_encoder_get_dsc_config(phys_enc->parent);
++		u32 compressed_bpp = drm_dsc_get_bpp_int(dsc);
++		u32 line_bits = timing->width * compressed_bpp;
++		u32 bits_per_pclk = dsc->bits_per_component * 3;
++
+ 		/*
+-		 * TODO: replace drm_dsc_get_bpp_int with logic to handle
+-		 * fractional part if there is fraction
++		 * DSI rounds the compressed line up to whole pixel clocks. On the
++		 * Lenovo Y700 Gen4's Novatek NT36536 bonded DSI panel, each link
++		 * has two 476-pixel slices at 8 bpp and 10 bpc:
++		 * 952 * 8 / 30 needs 254 clocks. Truncating to 253 here makes
++		 * DPU and DSI disagree on the active width and corrupts the image.
++		 *
++		 * Match DSI's rounding only for complete, byte-aligned RGB slices
++		 * covering this link. Video timing counts 3 * bpc bits per clock
++		 * on widebus; the narrow bus matches only at 8 bpc. Also check
++		 * that the link width came from DSI splitting, not YUV420 scaling.
++		 * Keep the old calculation for other layouts.
+ 		 */
+-		timing->width = timing->width * drm_dsc_get_bpp_int(dsc) /
+-				(dsc->bits_per_component * 3);
++		if (phys_enc->hw_intf->cap->type == INTF_DSI &&
++		    !dsc->native_420 && !dsc->native_422 && !dsc->simple_422 &&
++		    !(dsc->bits_per_pixel & 0xf) &&
++		    (timing->wide_bus_en || dsc->bits_per_component == 8) &&
++		    phys_enc->cached_mode.hdisplay == timing->width *
++			    (phys_enc->split_role == ENC_ROLE_SOLO ? 1 : 2) &&
++		    dsc->slice_count * dsc->slice_width == timing->width &&
++		    !(dsc->slice_width * compressed_bpp % 8))
++			timing->width = DIV_ROUND_UP(line_bits, bits_per_pclk);
++		else
++			timing->width = line_bits / bits_per_pclk;
+ 		timing->xres = timing->width;
+ 		timing->dce_bytes_per_line = msm_dsc_get_bytes_per_line(dsc);
+ 	}
+-- 
+2.55.0
+
