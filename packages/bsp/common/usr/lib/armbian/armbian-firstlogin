@@ -786,19 +786,31 @@ set_user_icon() {
 
 if [[ -f /root/.not_logged_in_yet ]] && tty -s; then
 
-	# All autologin consoles start the setup at once and the one that wins is
-	# often a console nobody is at, so let the newest session take it over.
-	# SIGTERM is the holder's clean-exit path: the marker survives a power
-	# loss the same way, and the setup simply runs again here.
-	exec 9<> /run/armbian-firstlogin.lock || exit 1
-	until flock -n 9; do
-		kill -TERM "$(< /run/armbian-firstlogin.lock)" 2> /dev/null
-		sleep 1
-	done
-	echo $$ > /run/armbian-firstlogin.lock
+	. /root/.not_logged_in_yet
 
-	# it may have been finished by the session we just displaced
-	[[ -f /root/.not_logged_in_yet ]] || exit 0
+	# most autologin consoles have nobody at them, so wait for Enter;
+	# a preset run has nobody to wait for, an ssh login already has a user
+	if [[ -z "${PRESET_ROOT_PASSWORD}${PRESET_CONFIGURATION}${SSH_CONNECTION}" ]]; then
+		echo -e "\nPress Enter to start the first login setup on this console."
+		until read -r -t 1 _; do
+			(($? > 128)) || exit 0 # not a timeout: the terminal is gone
+			# done elsewhere: log out instead of leaving a root shell
+			[[ -f /root/.not_logged_in_yet ]] || { kill -HUP "$PPID"; exit 0; }
+		done
+	fi
+
+	exec 9<> /run/armbian-firstlogin.lock || exit 1
+	if ! flock -n 9; then
+		holder=$(< /run/armbian-firstlogin.lock)
+		echo -e "\nFirst login setup is already running on ${holder:-another console}.\n"
+		exit 0
+	fi
+	tty > /run/armbian-firstlogin.lock
+	# done elsewhere meanwhile: log a console out, keep an ssh shell
+	if [[ ! -f /root/.not_logged_in_yet ]]; then
+		[[ -z "${SSH_CONNECTION}" ]] && kill -HUP "$PPID"
+		exit 0
+	fi
 
 	. /root/.not_logged_in_yet
 
@@ -915,6 +927,9 @@ if [[ -f /root/.not_logged_in_yet ]] && tty -s; then
 
 	[[ -z "$PRESET_ROOT_PASSWORD" ]] && echo "" # empty line
 
+	# extra Enter presses would be read as an empty password
+	while read -r -t 0 _; do read -r _; done
+
 	trap '' 2
 	REPEATS=3
 	while [ -f "/root/.not_logged_in_yet" ]; do
@@ -1019,6 +1034,22 @@ if [[ -f /root/.not_logged_in_yet ]] && tty -s; then
 	if [[ ${USER_SHELL} == zsh ]]; then
 		printf "\nYou selected \e[0;91mZSH\x1B[0m as your default shell. If you want to use it right away, please logout and login! \n\n"
 	fi
+
+	# Heal host keys torn by power loss during firstrun's regeneration: the
+	# teardown (rm/truncate) can be durable while recreation is lost. -A skips
+	# files that exist, so drop empties first; it is a no-op on intact keys.
+	for _k in /etc/ssh/ssh_host_*_key; do
+		[[ -e "$_k" && ! -s "$_k" ]] || continue
+		if rm -f "$_k" "$_k.pub"; then
+			EMPTY_KEYS=1
+		else
+			echo "WARNING: failed to remove empty host key ${_k}" >&2
+		fi
+	done
+	if [[ -n "${EMPTY_KEYS:-}" ]]; then
+		echo -e "\nRegenerating SSH host keys lost to power failure..."
+	fi
+	ssh-keygen -A > /dev/null 2>&1 && sync
 
 	# re-enable passing locale environment via ssh (atomic write)
 	_f="/etc/ssh/sshd_config"
