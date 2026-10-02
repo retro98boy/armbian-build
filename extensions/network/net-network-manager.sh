@@ -13,8 +13,12 @@ function extension_prepare_config__install_network_manager() {
 	add_packages_to_image network-manager network-manager-openvpn netplan.io
 
 	if [[ "${BUILD_DESKTOP}" == "yes" ]]; then
-		display_alert "Extension: ${EXTENSION}: Adding extra packages for desktop to image" "network-manager-gnome network-manager-ssh network-manager-vpnc" "info"
-		add_packages_to_image network-manager-gnome network-manager-ssh network-manager-vpnc
+		local desktop_network_packages=(network-manager-gnome network-manager-ssh network-manager-vpnc)
+		if [[ "${RELEASE}" == "forky" ]]; then
+			desktop_network_packages=(network-manager-applet network-manager-ssh network-manager-vpnc)
+		fi
+		display_alert "Extension: ${EXTENSION}: Adding extra packages for desktop to image" "${desktop_network_packages[*]}" "info"
+		add_packages_to_image "${desktop_network_packages[@]}"
 	fi
 
 	if [[ "${DISTRIBUTION}" == "Ubuntu" ]]; then

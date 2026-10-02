@@ -244,6 +244,15 @@ function create_new_rootfs_cache_via_debootstrap() {
 	if [[ $BUILD_DESKTOP == "yes" ]]; then
 		display_alert "Installing desktop via armbian-config" "${DESKTOP_ENVIRONMENT} tier=${DESKTOP_TIER:-mid}" "info"
 		chroot_sdcard_apt_get_install armbian-config
+		if [[ "${RELEASE}" == "forky" && "${DESKTOP_ENVIRONMENT}" == "gnome" ]]; then
+			# Forky's APT index lacks the transitional package named by configng's GNOME YAML.
+			local gnome_yaml="${SDCARD}/usr/share/armbian-config/desktops/yaml/gnome.yaml"
+			[[ -f "${gnome_yaml}" ]] || exit_with_error "GNOME desktop definition missing" "${gnome_yaml}"
+			if grep -q '^      - network-manager-gnome$' "${gnome_yaml}"; then
+				sed -i 's/^      - network-manager-gnome$/      - network-manager-applet/' "${gnome_yaml}"
+				display_alert "Forky GNOME package compatibility" "network-manager-gnome -> network-manager-applet" "info"
+			fi
+		fi
 		chroot_sdcard "SUDO_USER= DEBIAN_FRONTEND=noninteractive DIALOG=read armbian-config --api module_desktops install de=${DESKTOP_ENVIRONMENT} tier=${DESKTOP_TIER:-mid} mode=build"
 	fi
 
