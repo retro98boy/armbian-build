@@ -31,14 +31,14 @@ diff --git a/arch/arm64/boot/dts/rockchip/overlay/Makefile b/arch/arm64/boot/dts
 index 37e6f70063ea..a67d78f1ca89 100644
 --- a/arch/arm64/boot/dts/rockchip/overlay/Makefile
 +++ b/arch/arm64/boot/dts/rockchip/overlay/Makefile
-@@ -139,6 +139,7 @@ dtbo-$(CONFIG_ARCH_ROCKCHIP) += \
+@@ -143,6 +143,7 @@ dtbo-$(CONFIG_ARCH_ROCKCHIP) += \
  	rockchip-rk3588-panthor-gpu.dtbo \
  	rk3528-rock-2-enable-pcie.dtbo \
  	rk3566-roc-pc-sata2.dtbo \
 +	rk3562-kickpi-k3b-demo-dsi-panel.dtbo \
+ 	rk3576-can0-m2.dtbo \
  	rk3576-can1-m1.dtbo \
- 	rk3576-i2c0-m1.dtbo \
- 	rk3576-i2c1-m0.dtbo \
+ 	rk3576-can1-m2.dtbo \
 diff --git a/arch/arm64/boot/dts/rockchip/overlay/rk3562-kickpi-k3b-demo-dsi-panel.dts b/arch/arm64/boot/dts/rockchip/overlay/rk3562-kickpi-k3b-demo-dsi-panel.dts
 new file mode 100644
 index 000000000000..6032b293a6ea
@@ -1574,4 +1574,3 @@ index 000000000000..72c1c83c6fce
 +};
 -- 
 2.55.0
-
