@@ -1,0 +1,12 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+/dts-v1/;
+
+#include "amlogic-t7-a311d2-aoc-65t33z.dtsi"
+
+/ {
+	memory@0 {
+		device_type = "memory";
+		reg = <0x0 0x0 0x0 0xe0000000
+		       0x1 0x0 0x0 0x20000000>;
+	};
+};
