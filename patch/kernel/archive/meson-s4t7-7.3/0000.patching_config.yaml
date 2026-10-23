@@ -1,0 +1,5 @@
+config:
+  dts-directories:
+    - { source: "dt", target: "arch/arm64/boot/dts/amlogic" }
+  auto-patch-dt-makefile:
+    - { directory: "arch/arm64/boot/dts/amlogic", config-var: "CONFIG_ARCH_MESON", add-only: true }
