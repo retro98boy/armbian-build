@@ -1,0 +1,24 @@
+Subject: [PATCH] arm64: dts: amlogic: t7: add I2C B controller
+
+Add the controller used by the CoreLab TVPro RTC.
+
+diff --git a/arch/arm64/boot/dts/amlogic/amlogic-t7.dtsi b/arch/arm64/boot/dts/amlogic/amlogic-t7.dtsi
+--- a/arch/arm64/boot/dts/amlogic/amlogic-t7.dtsi
++++ b/arch/arm64/boot/dts/amlogic/amlogic-t7.dtsi
+@@ -1268,6 +1268,16 @@
+ 				status = "disabled";
+ 			};
+ 
++			i2c_m_b: i2c@68000 {
++				compatible = "amlogic,t7-i2c", "amlogic,meson-axg-i2c";
++				reg = <0x0 0x68000 0x0 0x48>;
++				#address-cells = <1>;
++				#size-cells = <0>;
++				interrupts = <GIC_SPI 161 IRQ_TYPE_EDGE_RISING>;
++				clocks = <&clkc_periphs CLKID_SYS_I2C_M_B>;
++				status = "disabled";
++			};
++
+ 			i2c_m_ao_a: i2c@76000 {
+ 				compatible = "amlogic,t7-i2c", "amlogic,meson-axg-i2c";
+ 				reg = <0x0 0x76000 0x0 0x48>;
