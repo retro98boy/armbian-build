@@ -1,0 +1,165 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+/*
+ * Copyright (c) 2022 Fuzhou Rockchip Electronics Co., Ltd.
+ * Copyright (c) 2026 retro98boy <retro98boy@qq.com>
+ */
+
+#include "rk3568-zc-3568d.dts"
+#include <dt-bindings/pwm/pwm.h>
+
+/ {
+	model = "Zhuoce ZC-3568D P1";
+	compatible = "zhuoce,zc-3568d-p1", "zhuoce,zc-3568d", "rockchip,rk3568";
+
+	backlight: backlight {
+		compatible = "pwm-backlight";
+		pwms = <&pwm5 0 25000 0>;
+		enable-gpios = <&gpio3 RK_PC7 GPIO_ACTIVE_HIGH>;
+		post-pwm-on-delay-ms = <10>;
+		default-brightness-level = <200>;
+		brightness-levels = <
+			   0  321  321  321  321  322  322  322
+			 323  323  324  324  325  326  327  328
+			 329  330  331  332  334  335  337  339
+			 340  342  344  346  348  351  353  356
+			 358  361  364  366  369  372  376  379
+			 382  386  389  393  397  401  405  409
+			 413  418  422  427  432  436  441  446
+			 451  457  462  468  473  479  485  491
+			 497  503  509  516  522  529  536  543
+			 550  557  564  571  579  587  594  602
+			 610  618  627  635  643  652  661  670
+			 679  688  697  706  716  725  735  745
+			 755  765  775  786  796  807  817  828
+			 839  850  862  873  885  896  908  920
+			 932  944  956  969  981  994 1007 1020
+			1033 1046 1060 1073 1087 1100 1114 1128
+			1143 1157 1171 1186 1200 1215 1230 1245
+			1261 1276 1292 1307 1323 1339 1355 1371
+			1387 1404 1421 1437 1454 1471 1488 1506
+			1523 1541 1558 1576 1594 1612 1631 1649
+			1668 1686 1705 1724 1743 1763 1782 1802
+			1821 1841 1861 1881 1901 1922 1942 1963
+			1984 2005 2026 2047 2069 2090 2112 2134
+			2156 2178 2200 2223 2245 2268 2291 2314
+			2337 2360 2384 2407 2431 2455 2479 2503
+			2527 2552 2576 2601 2626 2651 2676 2702
+			2727 2753 2779 2804 2831 2857 2883 2910
+			2936 2963 2990 3017 3045 3072 3100 3127
+			3155 3183 3212 3240 3268 3297 3326 3355
+			3384 3413 3442 3472 3502 3532 3562 3592
+			3622 3652 3683 3714 3745 3776 3807 3838
+			3870 3902 3933 3965 3998 4030 4062 4095
+		>;
+	};
+
+	vcc3v3_lcd: regulator-vcc3v3-lcd {
+		compatible = "regulator-fixed";
+		regulator-name = "vcc3v3_lcd";
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+		gpio = <&gpio3 RK_PC6 GPIO_ACTIVE_HIGH>;
+		enable-active-high;
+		vin-supply = <&vcc3v3_sys>;
+	};
+};
+
+&dsi0 {
+	status = "okay";
+	panel@0 {
+		reg = <0>;
+		backlight = <&backlight>;
+		enable-gpios = <&gpio3 RK_PD1 GPIO_ACTIVE_HIGH>;
+		reset-gpios = <&gpio2 RK_PC4 GPIO_ACTIVE_LOW>;
+		reset1-gpios = <&gpio3 RK_PA7 GPIO_ACTIVE_LOW>;
+		compatible = "simple-panel-dsi";
+		bpc = <8>;
+		power-supply = <&vcc3v3_lcd>;
+		width-mm = <330>;
+		height-mm = <200>;
+		prepare-delay-ms = <10>;
+		reset-delay-ms = <100>;
+		init-delay-ms = <100>;
+		enable-delay-ms = <100>;
+		disable-delay-ms = <100>;
+		unprepare-delay-ms = <100>;
+		dsi,flags = <0xa03>;
+		dsi,format = <0>;
+		dsi,lanes = <4>;
+		panel-init-sequence = [23 03 02 27 aa 23 03 02 48 02 23 03 02 b6 20 23 03 02 01 80 23 03 02 02 38 23 03 02 03 47 23 03 02 04 a0 23 03 02 05 14 23 03 02 06 64 23 03 02 07 00 23 03 02 08 0a 23 03 02 09 0a 23 03 02 0a 19 23 03 02 0b 82 23 03 02 0c 13 23 03 02 0d 01 23 03 02 0e 80 23 03 02 0f 20 23 03 02 10 20 23 03 02 11 03 23 03 02 12 1b 23 03 02 13 53 23 03 02 14 01 23 03 02 15 23 23 03 02 16 40 23 03 02 17 00 23 03 02 18 01 23 03 02 19 23 23 03 02 1a 40 23 03 02 1b 00 23 03 02 1e 46 23 03 02 51 30 23 03 02 1f 10 23 03 02 2a 01];
+		panel-exit-sequence = [05 00 01 28 05 00 01 10];
+		display-timings {
+			native-mode = <&panel_timing>;
+			panel_timing: timing0 {
+				clock-frequency = <148500000>;
+				hactive = <1920>;
+				hfront-porch = <216>;
+				hsync-len = <44>;
+				hback-porch = <20>;
+				vactive = <1080>;
+				vfront-porch = <20>;
+				vsync-len = <5>;
+				vback-porch = <20>;
+				hsync-active = <0>;
+				vsync-active = <0>;
+				de-active = <0>;
+				pixelclk-active = <0>;
+			};
+		};
+		port {
+			panel_in: endpoint {
+				remote-endpoint = <&dsi0_out_panel>;
+			};
+		};
+	};
+	ports {
+		port@1 {
+			reg = <1>;
+			dsi0_out_panel: endpoint {
+				remote-endpoint = <&panel_in>;
+			};
+		};
+	};
+};
+
+&dsi0_in_vp0 {
+	status = "disabled";
+};
+
+&dsi0_in_vp1 {
+	status = "okay";
+};
+
+&pwm5 {
+	status = "okay";
+};
+
+&route_dsi0 {
+	status = "okay";
+	connect = <&vp1_out_dsi0>;
+};
+
+&video_phy0 {
+	status = "okay";
+};
+
+&vop {
+	assigned-clocks = <&cru DCLK_VOP0>, <&cru DCLK_VOP1>;
+	assigned-clock-parents = <&pmucru PLL_HPLL>, <&cru PLL_VPLL>;
+};
+
+&vp0 {
+	/* Assign Esmart1 to HDMI instead of the unused VP2. */
+	rockchip,plane-mask = <0x2a>;
+	rockchip,primary-plane = <5>;
+};
+
+&vp1 {
+	rockchip,plane-mask = <0x15>;
+	rockchip,primary-plane = <4>;
+};
+
+&vp2 {
+	rockchip,plane-mask = <0>;
+	/delete-property/ rockchip,primary-plane;
+};

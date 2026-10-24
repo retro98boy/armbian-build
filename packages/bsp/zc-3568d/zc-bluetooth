@@ -1,0 +1,11 @@
+#!/bin/bash
+# The SDIO driver uploads both Wi-Fi firmware and the Bluetooth patch.
+set -euo pipefail
+# Rockchip rfkill initially holds Bluetooth in reset.
+rfkill unblock bluetooth
+modprobe aic8800_fdrv_sdio
+modprobe hci_uart
+
+# UART1 uses H4 at the firmware's configured speed, with RTS/CTS and sleep disabled.
+[[ -c /dev/ttyS1 ]] || { echo 'Bluetooth UART1 is missing' >&2; exit 1; }
+exec /usr/bin/hciattach -n -s 1500000 /dev/ttyS1 any 1500000 flow nosleep

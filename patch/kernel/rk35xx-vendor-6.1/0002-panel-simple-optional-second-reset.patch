@@ -1,0 +1,49 @@
+From: Armbian <info@armbian.com>
+Subject: [PATCH] drm: panel-simple: Support an optional second reset line
+
+--- a/drivers/gpu/drm/panel/panel-simple.c
++++ b/drivers/gpu/drm/panel/panel-simple.c
+@@ -211,6 +211,7 @@
+ 
+ 	struct gpio_desc *enable_gpio;
+ 	struct gpio_desc *reset_gpio;
++	struct gpio_desc *reset1_gpio;
+ 
+ 	struct edid *edid;
+ 
+@@ -588,6 +589,8 @@
+ 	}
+ 
+ 	gpiod_direction_output(p->reset_gpio, 1);
++	if (p->reset1_gpio)
++		gpiod_direction_output(p->reset1_gpio, 1);
+ 	gpiod_direction_output(p->enable_gpio, 0);
+ 
+ 	panel_simple_regulator_disable(p);
+@@ -621,11 +624,15 @@
+ 		panel_simple_msleep(p->desc->delay.prepare);
+ 
+ 	gpiod_direction_output(p->reset_gpio, 1);
++	if (p->reset1_gpio)
++		gpiod_direction_output(p->reset1_gpio, 1);
+ 
+ 	if (p->desc->delay.reset)
+ 		panel_simple_msleep(p->desc->delay.reset);
+ 
+ 	gpiod_direction_output(p->reset_gpio, 0);
++	if (p->reset1_gpio)
++		gpiod_direction_output(p->reset1_gpio, 0);
+ 
+ 	if (p->desc->delay.init)
+ 		panel_simple_msleep(p->desc->delay.init);
+@@ -902,6 +909,10 @@
+ 			dev_err(dev, "failed to get enable GPIO: %d\n", err);
+ 		return err;
+ 	}
++
++	panel->reset1_gpio = devm_gpiod_get_optional(dev, "reset1", GPIOD_ASIS);
++	if (IS_ERR(panel->reset1_gpio))
++		return PTR_ERR(panel->reset1_gpio);
+ 
+ 	panel->reset_gpio = devm_gpiod_get_optional(dev, "reset", GPIOD_ASIS);
+ 	if (IS_ERR(panel->reset_gpio)) {

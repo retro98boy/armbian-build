@@ -1,0 +1,14 @@
+[Unit]
+Description=ZC-3568D AIC8801 Bluetooth UART
+After=systemd-modules-load.service
+Before=bluetooth.service
+
+[Service]
+Type=simple
+ExecStart=/usr/lib/armbian/zc-bluetooth
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=5s
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,121 @@
+From: Armbian <info@armbian.com>
+Subject: [PATCH] drm: panel: Support generic writes and a second reset line
+
+Keep automatic DCS commands optional for bridge initialization.
+
+--- a/drivers/gpu/drm/panel/panel-rocknix-generic-dsi.c
++++ b/drivers/gpu/drm/panel/panel-rocknix-generic-dsi.c
+@@ -54,6 +54,7 @@
+ };
+ 
+ #define DCS_PSEUDO_CMD_SEQ 0x10000
++#define DCS_PSEUDO_CMD_GENERIC 0x10001
+ struct generic_panel_init_seq {
+     int dcs;
+     int len;
+@@ -68,6 +69,8 @@
+     struct drm_panel panel;
+     struct gpio_desc *enable_gpio;
+     struct gpio_desc *reset_gpio;
++    struct gpio_desc *reset1_gpio;
++    bool no_dcs_power_commands;
+     struct regulator *vdd;
+     struct regulator *iovcc;
+ 
+@@ -207,8 +210,8 @@
+             }
+             //for (int i=0; i < (item->len); i++) { dev_info(dev, " %02x", item->data[i]);};
+             //dev_info(dev, "\n");
+-        } else if (strcmp(param, "seq") == 0) {
+-            item->dcs = DCS_PSEUDO_CMD_SEQ;
++        } else if (strcmp(param, "seq") == 0 || strcmp(param, "generic") == 0) {
++            item->dcs = strcmp(param, "generic") == 0 ? DCS_PSEUDO_CMD_GENERIC : DCS_PSEUDO_CMD_SEQ;
+             item->len = (strlen(val)) >> 1;
+             item->data = devm_kzalloc(dev, item->len, GFP_KERNEL);
+             if (!item->data)
+@@ -377,6 +380,8 @@
+                     dev_info(ctx->dev, "read[%d]: %02x\n", i, readbuf[i]);
+                 }
+             }
++        } else if (iseq->dcs == DCS_PSEUDO_CMD_GENERIC) {
++            ret = mipi_dsi_generic_write(dsi, iseq->data, iseq->len);
+         } else if (iseq->dcs == DCS_PSEUDO_CMD_SEQ) {
+             ret = mipi_dsi_dcs_write_buffer(dsi, iseq->data, iseq->len);
+             dev_dbg(dev, "iseq 0x%px len=%d -> %d\n", (void*)iseq, iseq->len, ret);
+@@ -384,6 +389,8 @@
+             ret = mipi_dsi_dcs_write(dsi, iseq->dcs, iseq->data, iseq->len);
+             dev_dbg(dev, "iseq %02x len=%d -> %d\n", iseq->dcs, iseq->len, ret);
+         }
++        if (ret < 0)
++            return ret;
+         if (iseq->wait) {
+             msleep(iseq->wait);
+         }
+@@ -416,11 +423,13 @@
+ 
+     if (ctx->enable_gpio) { gpiod_set_value_cansleep(ctx->enable_gpio, 0); }
+     gpiod_set_value_cansleep(ctx->reset_gpio, 1);
++    gpiod_set_value_cansleep(ctx->reset1_gpio, 1);
+ 
+     regulator_disable(ctx->iovcc);
+     regulator_disable(ctx->vdd);
+ 
+     gpiod_set_value_cansleep(ctx->reset_gpio, 1);
++    gpiod_set_value_cansleep(ctx->reset1_gpio, 1);
+ 
+     ctx->prepared = false;
+ 
+@@ -453,8 +462,10 @@
+     msleep(ctx->delays.prepare);
+ 
+     gpiod_set_value_cansleep(ctx->reset_gpio, 1);
++    gpiod_set_value_cansleep(ctx->reset1_gpio, 1);
+     msleep(ctx->delays.reset);
+     gpiod_set_value_cansleep(ctx->reset_gpio, 0);
++    gpiod_set_value_cansleep(ctx->reset1_gpio, 0);
+ 
+     msleep(ctx->delays.init);
+ 
+@@ -464,16 +475,19 @@
+         goto disable_iovcc;
+     }
+ 
+-    ret = mipi_dsi_dcs_set_display_on(dsi);
+-    if (ret < 0) {
+-        dev_err(ctx->dev, "Failed to set display on: %d\n", ret);
+-        goto disable_iovcc;
+-    }
+-
+-    ret = mipi_dsi_dcs_exit_sleep_mode(dsi);
+-    if (ret < 0) {
+-        dev_err(ctx->dev, "Failed to exit sleep mode: %d\n", ret);
+-        goto disable_iovcc;
++    if (!ctx->no_dcs_power_commands) {
++        ret = mipi_dsi_dcs_set_display_on(dsi);
++        if (ret < 0) {
++            dev_err(ctx->dev, "Failed to set display on: %d\n", ret);
++            goto disable_iovcc;
++        }
++
++        ret = mipi_dsi_dcs_exit_sleep_mode(dsi);
++        if (ret < 0) {
++            dev_err(ctx->dev, "Failed to exit sleep mode: %d\n", ret);
++            goto disable_iovcc;
++        }
++
+     }
+ 
+     msleep(ctx->delays.enable);
+@@ -593,6 +607,12 @@
+         dev_err(dev, "cannot get reset gpio\n");
+         return PTR_ERR(ctx->reset_gpio);
+     }
++
++    ctx->reset1_gpio = devm_gpiod_get_optional(dev, "reset1", GPIOD_OUT_LOW);
++    if (IS_ERR(ctx->reset1_gpio))
++        return PTR_ERR(ctx->reset1_gpio);
++    ctx->no_dcs_power_commands = of_property_read_bool(dev->of_node,
++                                    "rocknix,no-dcs-power-commands");
+ 
+     ctx->vdd = devm_regulator_get(dev, "vdd");
+     if (IS_ERR(ctx->vdd)) {

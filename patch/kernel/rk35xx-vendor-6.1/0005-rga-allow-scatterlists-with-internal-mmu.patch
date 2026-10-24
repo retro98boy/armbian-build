@@ -1,0 +1,59 @@
+Subject: [PATCH] media: rockchip: rga: allow scatterlists for the internal MMU
+
+RK3568 RGA2e uses its own page tables for scattered user buffers.
+Only require a single DMA segment for physical and system-IOMMU mappings.
+
+--- a/drivers/video/rockchip/rga3/rga_dma_buf.c
++++ b/drivers/video/rockchip/rga3/rga_dma_buf.c
+@@ -84,7 +84,8 @@
+ }
+ 
+ int rga_dma_map_sgt(struct sg_table *sgt, struct rga_dma_buffer *buffer,
+-		    enum dma_data_direction dir, struct device *map_dev)
++		    enum dma_data_direction dir, struct device *map_dev,
++		    bool contiguous)
+ {
+ 	int i, ret = 0;
+ 	struct scatterlist *sg = NULL;
+@@ -93,7 +94,7 @@
+ 	if (ret <= 0) {
+ 		rga_err("dma_map_sg failed! ret = %d\n", ret);
+ 		return ret < 0 ? ret : -EINVAL;
+-	} else if (ret > 1) {
++	} else if (contiguous && ret > 1) {
+ 		rga_err("dma_map_sg mapped more than one segment! orig_nents = %d, nents = %d\n",
+ 			sgt->orig_nents, ret);
+ 		dma_unmap_sg(map_dev, sgt->sgl, sgt->orig_nents, dir);
+--- a/drivers/video/rockchip/rga3/include/rga_dma_buf.h
++++ b/drivers/video/rockchip/rga3/include/rga_dma_buf.h
+@@ -41,7 +41,8 @@
+ int rga_dma_memory_check(struct rga_dma_buffer *rga_dma_buffer, struct rga_img_info_t *img);
+ 
+ int rga_dma_map_sgt(struct sg_table *sgt, struct rga_dma_buffer *buffer,
+-		    enum dma_data_direction dir, struct device *map_dev);
++		    enum dma_data_direction dir, struct device *map_dev,
++		    bool contiguous);
+ void rga_dma_unmap_sgt(struct rga_dma_buffer *buffer);
+ 
+ int rga_dma_map_buf(struct dma_buf *dma_buf, struct rga_dma_buffer *rga_dma_buffer,
+--- a/drivers/video/rockchip/rga3/rga_mm.c
++++ b/drivers/video/rockchip/rga3/rga_mm.c
+@@ -827,7 +827,8 @@
+ 	 * and not IOMMU for devices without iommu_info ptr.
+ 	 */
+ 	map_dev = scheduler->iommu_info ? scheduler->iommu_info->default_dev : scheduler->dev;
+-	ret = rga_dma_map_sgt(sgt, buffer, DMA_BIDIRECTIONAL, map_dev);
++	ret = rga_dma_map_sgt(sgt, buffer, DMA_BIDIRECTIONAL, map_dev,
++			       scheduler->data->mmu != RGA_MMU);
+ 	if (ret < 0) {
+ 		rga_err("%s core[%d] rga map sgt failed! va = 0x%lx, orig_nents = %d\n",
+ 			__func__, scheduler->core,
+@@ -961,7 +962,7 @@
+ 		 */
+ 		map_dev = scheduler->iommu_info ?
+ 			scheduler->iommu_info->default_dev : scheduler->dev;
+-		ret = rga_dma_map_sgt(sgt, buffer, DMA_BIDIRECTIONAL, map_dev);
++		ret = rga_dma_map_sgt(sgt, buffer, DMA_BIDIRECTIONAL, map_dev, true);
+ 		if (ret < 0) {
+ 			rga_err("%s core[%d] map phys_addr error!, phys_addr = 0x%llx\n",
+ 				 __func__, scheduler->core,

@@ -1,0 +1,22 @@
+--- a/SDIO/driver_fw/driver/aic8800/aic8800_bsp/aicsdio.c
++++ b/SDIO/driver_fw/driver/aic8800/aic8800_bsp/aicsdio.c
+@@ -1800,7 +1800,7 @@
+ 	host = sdiodev->func->card->host;
+ 
+ 	sdio_claim_host(sdiodev->func);
+-#if 0//SDIO PHASE SETTING
++#if 1 /* Enable CCCR high-speed mode. */
+ 	sdiodev->func->card->quirks |= MMC_QUIRK_LENIENT_FN0;
+ 	sdio_f0_writeb(sdiodev->func, feature.sdio_phase, 0x13, &ret);
+ 	if (ret < 0) {
+--- a/SDIO/driver_fw/driver/aic8800/aic8800_fdrv/aicwf_sdio.c
++++ b/SDIO/driver_fw/driver/aic8800/aic8800_fdrv/aicwf_sdio.c
+@@ -3126,7 +3126,7 @@
+ 	host = sdiodev->func->card->host;
+ 
+ 	sdio_claim_host(sdiodev->func);
+-#if 0//SDIO PHASE SETTING
++#if 1 /* Enable CCCR high-speed mode. */
+ 	sdiodev->func->card->quirks |= MMC_QUIRK_LENIENT_FN0;
+ 	sdio_f0_writeb(sdiodev->func, feature.sdio_phase, 0x13, &ret);
+ 	if (ret < 0) {
