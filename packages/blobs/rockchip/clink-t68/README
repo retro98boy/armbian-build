@@ -1,0 +1,17 @@
+CLINK-T68 factory DDR loader
+
+File: rk3568_clink-t68_stock_ddr_v1.11.bin
+Version: DDR Version V1.11 20211103
+Size: 59392 bytes
+SHA256: 953a4271c1b9894c1ca4adb668713b8dd2476320b8b8a5edd77f3e8c190974a7
+
+Source: CLINK-T68 stock Android eMMC backup, collected on 2026-11-03.
+Backup file: emmc-first32MiB.img
+Backup SHA256: 49b44111ab3e0f8a33ad526a9e77a6924255f4a1d23bcc0fce14a84e4d128a43
+Payload offset: 0x8800.
+All five loader copies contain the same DDR payload.
+
+SDK rkbin commit: 155867881ea1115f7cdabb6f2d14e3be314dbd29
+The board hook copies this file into the rkbin build directory.
+Mainline U-Boot uses this payload as ROCKCHIP_TPL.
+The bundled LICENSE comes from the SDK rkbin repository.

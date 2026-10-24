@@ -1,0 +1,35 @@
+From: retro98boy <retro98boy@qq.com>
+Subject: [PATCH] drm/panel: rocknix: Support generic write commands
+
+Accept generic= commands to preserve Generic Write packet types during panel initialization.
+
+--- a/drivers/gpu/drm/panel/panel-rocknix-generic-dsi.c
++++ b/drivers/gpu/drm/panel/panel-rocknix-generic-dsi.c
+@@ -54,6 +54,7 @@
+ };
+ 
+ #define DCS_PSEUDO_CMD_SEQ 0x10000
++#define DCS_PSEUDO_CMD_GENERIC 0x10001
+ struct generic_panel_init_seq {
+     int dcs;
+     int len;
+@@ -208,8 +209,8 @@
+             }
+             //for (int i=0; i < (item->len); i++) { dev_info(dev, " %02x", item->data[i]);};
+             //dev_info(dev, "\n");
+-        } else if (strcmp(param, "seq") == 0) {
+-            item->dcs = DCS_PSEUDO_CMD_SEQ;
++        } else if (strcmp(param, "seq") == 0 || strcmp(param, "generic") == 0) {
++            item->dcs = strcmp(param, "generic") == 0 ? DCS_PSEUDO_CMD_GENERIC : DCS_PSEUDO_CMD_SEQ;
+             item->len = (strlen(val)) >> 1;
+             item->data = devm_kzalloc(dev, item->len, GFP_KERNEL);
+             if (!item->data)
+@@ -378,6 +379,8 @@
+                     dev_info(ctx->dev, "read[%d]: %02x\n", i, readbuf[i]);
+                 }
+             }
++        } else if (iseq->dcs == DCS_PSEUDO_CMD_GENERIC) {
++            ret = mipi_dsi_generic_write(dsi, iseq->data, iseq->len);
+         } else if (iseq->dcs == DCS_PSEUDO_CMD_SEQ) {
+             ret = mipi_dsi_dcs_write_buffer(dsi, iseq->data, iseq->len);
+             dev_dbg(dev, "iseq 0x%px len=%d -> %d\n", (void*)iseq, iseq->len, ret);

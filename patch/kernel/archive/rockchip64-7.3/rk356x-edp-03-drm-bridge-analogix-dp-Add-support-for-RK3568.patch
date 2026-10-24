@@ -1,0 +1,53 @@
+From: Damon Ding <damon.ding@rock-chips.com>
+Date: Fri, 30 Oct 2026 14:49:02 +0800
+Subject: [PATCH v4 3/6] drm/bridge: analogix_dp: Add support for RK3568
+
+The RK3568 SoC integrates an eDP transmitter based on the Analogix
+DisplayPort core.  Like RK3288 and RK3399, its main link consists of
+4 physical lanes running at 1.62/2.7 Gbps per lane.
+
+Add a new RK3568_EDP device type and let it share the link rate and
+lane count limits of the RK3288/RK3399 variants.
+
+Link: https://lore.kernel.org/r/20261030064905.2248999-4-damon.ding@rock-chips.com
+Signed-off-by: Damon Ding <damon.ding@rock-chips.com>
+---
+ drivers/gpu/drm/bridge/analogix/analogix_dp_core.c | 1 +
+ include/drm/bridge/analogix_dp.h                   | 2 ++
+ 2 files changed, 3 insertions(+)
+
+diff --git a/drivers/gpu/drm/bridge/analogix/analogix_dp_core.c b/drivers/gpu/drm/bridge/analogix/analogix_dp_core.c
+index 6df6963740d2..8bb4c48aa3b4 100644
+--- a/drivers/gpu/drm/bridge/analogix/analogix_dp_core.c
++++ b/drivers/gpu/drm/bridge/analogix/analogix_dp_core.c
+@@ -1319,6 +1319,7 @@ static int analogix_dp_dt_parse_pdata(struct analogix_dp_device *dp)
+ 	switch (dp->plat_data->dev_type) {
+ 	case RK3288_DP:
+ 	case RK3399_EDP:
++	case RK3568_EDP:
+ 		/*
+ 		 * Like Rk3288 DisplayPort TRM indicate that "Main link
+ 		 * containing 4 physical lanes of 2.7/1.62 Gbps/lane".
+diff --git a/include/drm/bridge/analogix_dp.h b/include/drm/bridge/analogix_dp.h
+index 6033137b651e..e05ff4bd689c 100644
+--- a/include/drm/bridge/analogix_dp.h
++++ b/include/drm/bridge/analogix_dp.h
+@@ -16,6 +16,7 @@ enum analogix_dp_devtype {
+ 	EXYNOS_DP,
+ 	RK3288_DP,
+ 	RK3399_EDP,
++	RK3568_EDP,
+ 	RK3576_EDP,
+ 	RK3588_EDP,
+ };
+@@ -25,6 +26,7 @@ static inline bool analogix_dp_is_rockchip(enum analogix_dp_devtype type)
+ 	switch (type) {
+ 	case RK3288_DP:
+ 	case RK3399_EDP:
++	case RK3568_EDP:
+ 	case RK3576_EDP:
+ 	case RK3588_EDP:
+ 		return true;
+-- 
+2.34.1
+

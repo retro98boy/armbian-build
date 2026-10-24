@@ -1,0 +1,53 @@
+DC-A568B support
+
+Select BOARD=dc-a568b and BRANCH=edge or BRANCH=vendor.
+Edge uses Linux 7.3. Vendor uses rk35xx-vendor-6.1.
+Both branches use mainline U-Boot v2026.07.
+U-Boot SPL uses the shared RK3568 DDR and BL31 binaries.
+A board-specific U-Boot patch reads the download key from SARADC0 instead of SARADC1.
+The ADC command remains available for hardware diagnosis.
+
+The edge DTS follows the ZC-3568D mainline template and DC-A568B BSP wiring.
+Hardware source: factory Android 11 live FDT and dmesg, captured on 2026-10-30.
+The factory kernel is 4.19.232 #679.
+
+Configured hardware:
+- TCS4525 CPU regulator at I2C0 0x1c and RK809 PMIC at 0x20.
+- eMMC HS200 and microSD SDR104.
+- GMAC0 RMII with RTL8201F PHY 001c:c816.
+- SDMMC2 AIC8800DC Wi-Fi and UART8 M0 Bluetooth.
+- HDMI video and audio, RK809 analog audio, headphone detection, and speaker control.
+- USB2 and USB3 ports use host mode.
+- I2C0/1/4/5, UART3 M1, UART4 M1, UART5 M1, and UART2 console.
+- HYM8563 RTC on I2C5, SARADC0 volume key, and GPIO4_C4 work LED.
+- BSP GPU, video engines, NPU, DDR scaling, and the shared RK3568 suspend policy.
+- Edge uses upstream Panfrost and RK809 audio bindings.
+- GPIO0_D3 carries the RTC interrupt. Do not apply the ZC external watchdog configuration.
+
+Display variants:
+- Use rk3568-dc-a568b.dtb for the base board with HDMI.
+- Select rk3568-dc-a568b-p1.dtb for HDMI and GM8775 LVDS at 1920x1080p60.
+- Vendor P1 uses simple-panel-dsi. Edge P1 uses rocknix,generic-dsi.
+- Both variants use the same 34 GM8775 register writes and display timing.
+- The GM8775 initialization uses DSI writes. It does not require the factory I2C helper driver.
+- P1 contains the panel, PWM4 backlight, DSI0, PHY0, and the VP1 display connection.
+- The current BSP timing uses 148.5 MHz, horizontal 216/44/20, and vertical 20/5/20.
+- Backlight uses normal PWM polarity, GPIO4_C5 enable, and the BSP brightness table.
+- Panel enable uses GPIO0_C7. The base DTS enables HDMI only.
+Set fdtfile=rockchip/rk3568-dc-a568b-p1.dtb in /boot/armbianEnv.txt to select P1.
+The default DTB is P1.
+
+Wireless uses the existing radxa-aic8800 extension without changes.
+The stock aic_userconfig_8800dc.txt matches Radxa 5.0+git20260123.5f7be68d-10.
+Several Wi-Fi and Bluetooth binaries differ from stock.
+Use Radxa's paired driver and firmware. Validate radio operation on the board.
+Both DTS variants enable four-bit SDIO high-speed operation.
+The initial configuration does not apply the ZC AIC8801 timing patch. Validate SDIO operation on the board.
+Edge holds Bluetooth enable GPIO3_A0 and wake GPIO3_A2 high, with UART8 RTS/CTS enabled.
+
+Known limits:
+- Factory Goodix, CHSC touch, and CS5518 probes fail. These devices remain disabled.
+- The connected ILITEK touch device uses USB.
+- Private ZTL RK100/RK200 devices need driver analysis. Do not infer an external watchdog from their names.
+- Mainline U-Boot has no TCS4525 driver. U-Boot leaves the CPU regulator voltage unchanged.
+- Compilation does not prove boot, peripheral operation, or stability. Hardware tests remain required.

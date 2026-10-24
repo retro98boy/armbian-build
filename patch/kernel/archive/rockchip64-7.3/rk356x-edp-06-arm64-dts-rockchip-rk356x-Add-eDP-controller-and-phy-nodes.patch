@@ -1,0 +1,86 @@
+From: Damon Ding <damon.ding@rock-chips.com>
+Date: Fri, 30 Oct 2026 14:49:05 +0800
+Subject: [PATCH v4 6/6] arm64: dts: rockchip: rk356x: Add eDP controller and phy nodes
+
+Add the eDP PHY GRF (with the eDP PHY child node mapped by its own
+register window) and the eDP controller nodes for the RK3568/RK3566
+SoCs.
+
+Link: https://lore.kernel.org/r/20261030064905.2248999-7-damon.ding@rock-chips.com
+[Context follows the Armbian rkvdec SRAM node.]
+Signed-off-by: Damon Ding <damon.ding@rock-chips.com>
+
+---
+
+Changes in v4:
+- Model the PHY node with a reg property under the parent syscon.
+---
+ arch/arm64/boot/dts/rockchip/rk356x-base.dtsi | 45 +++++++++++++++++++
+ 1 file changed, 45 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/rockchip/rk356x-base.dtsi b/arch/arm64/boot/dts/rockchip/rk356x-base.dtsi
+index a5832895bd39..7a5168548e55 100644
+--- a/arch/arm64/boot/dts/rockchip/rk356x-base.dtsi
++++ b/arch/arm64/boot/dts/rockchip/rk356x-base.dtsi
+@@ -403,6 +403,24 @@ usb2phy1_grf: syscon@fdca8000 {
+ 		reg = <0x0 0xfdca8000 0x0 0x8000>;
+ 	};
+ 
++	edp_phy_grf: syscon@fdcb0000 {
++		compatible = "rockchip,rk3568-edp-phy-grf", "syscon", "simple-mfd";
++		reg = <0x0 0xfdcb0000 0x0 0x8000>;
++		clocks = <&cru PCLK_EDPPHY_GRF>;
++		ranges = <0x0 0x0 0xfdcb0000 0x100>;
++		#address-cells = <1>;
++		#size-cells = <1>;
++
++		edp_phy: phy@0 {
++			compatible = "rockchip,rk3568-edp-phy";
++			reg = <0x0 0x100>;
++			clocks = <&pmucru XIN_OSC0_EDPPHY_G>;
++			clock-names = "refclk";
++			#phy-cells = <0>;
++			status = "disabled";
++		};
++	};
++
+ 	sram@fdcc0000 {
+ 		compatible = "mmio-sram";
+ 		reg = <0x0 0xfdcc0000 0x0 0xb000>;
+@@ -879,6 +897,33 @@ hdmi_out: port@1 {
+ 		};
+ 	};
+ 
++	edp: edp@fe0c0000 {
++		compatible = "rockchip,rk3568-edp";
++		reg = <0x0 0xfe0c0000 0x0 0x10000>;
++		clocks = <&pmucru XIN_OSC0_EDPPHY_G>, <&cru PCLK_EDP_CTRL>, <&cru HCLK_VO>;
++		clock-names = "dp", "pclk", "hclk";
++		interrupts = <GIC_SPI 18 IRQ_TYPE_LEVEL_HIGH>;
++		phys = <&edp_phy>;
++		phy-names = "dp";
++		power-domains = <&power RK3568_PD_VO>;
++		resets = <&cru SRST_EDP_24M>, <&cru SRST_P_EDP_CTRL>;
++		reset-names = "dp", "apb";
++		status = "disabled";
++
++		ports {
++			#address-cells = <1>;
++			#size-cells = <0>;
++
++			edp_in: port@0 {
++				reg = <0>;
++			};
++
++			edp_out: port@1 {
++				reg = <1>;
++			};
++		};
++	};
++
+ 	qos_gpu: qos@fe128000 {
+ 		compatible = "rockchip,rk3568-qos", "syscon";
+ 		reg = <0x0 0xfe128000 0x0 0x20>;
+-- 
+2.34.1
+

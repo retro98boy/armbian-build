@@ -1,0 +1,78 @@
+From: retro98boy <retro98boy@qq.com>
+Subject: [PATCH] phy: rockchip: naneng-edp: Enable the GRF access clock
+
+The direct MMIO regmap does not manage the parent GRF clock.
+Enable this clock before register access to prevent PLL lock timeouts.
+Disable it after the PHY powers down.
+
+Signed-off-by: retro98boy <retro98boy@qq.com>
+---
+--- a/drivers/phy/rockchip/phy-rockchip-naneng-edp.c
++++ b/drivers/phy/rockchip/phy-rockchip-naneng-edp.c
+@@ -83,6 +83,7 @@
+ 	struct regmap *regmap;
+ 	struct device *dev;
+ 	struct clk *refclk;
++	struct clk *pclk;
+ 	u8 lanes;
+ };
+ 
+@@ -333,9 +334,14 @@
+ 	struct rockchip_edp_phy *edpphy = phy_get_drvdata(phy);
+ 	int ret;
+ 
++	ret = clk_prepare_enable(edpphy->pclk);
++	if (ret)
++		return ret;
++
+ 	ret = clk_prepare_enable(edpphy->refclk);
+ 	if (ret < 0) {
+ 		dev_err(edpphy->dev, "Failed to prepare_enable refclk [%d]\n", ret);
++		clk_disable_unprepare(edpphy->pclk);
+ 		return ret;
+ 	}
+ 
+@@ -387,6 +393,7 @@
+ 		     FIELD_PREP_WM16(EDP_PHY_AUX_IDLE_MASK, 0x1));
+ 
+ 	clk_disable_unprepare(edpphy->refclk);
++	clk_disable_unprepare(edpphy->pclk);
+ 
+ 	return 0;
+ }
+@@ -405,6 +412,11 @@
+ 	.max_register = EDP_PHY_GRF_STATUS1,
+ };
+ 
++static void rockchip_edp_phy_put_pclk(void *data)
++{
++	clk_put(data);
++}
++
+ static int rockchip_edp_phy_probe(struct platform_device *pdev)
+ {
+ 	struct device *dev = &pdev->dev;
+@@ -412,6 +424,7 @@
+ 	void __iomem *regs;
+ 	struct phy *phy;
+ 	struct phy_provider *phy_provider;
++	int ret;
+ 
+ 	edpphy = devm_kzalloc(dev, sizeof(*edpphy), GFP_KERNEL);
+ 	if (!edpphy)
+@@ -431,6 +444,15 @@
+ 	edpphy->refclk = devm_clk_get(dev, "refclk");
+ 	if (IS_ERR(edpphy->refclk))
+ 		return dev_err_probe(dev, PTR_ERR(edpphy->refclk), "Failed to get refclk\n");
++
++	/* The parent GRF clock gates access to the PHY registers. */
++	edpphy->pclk = of_clk_get(dev->parent->of_node, 0);
++	if (IS_ERR(edpphy->pclk))
++		return dev_err_probe(dev, PTR_ERR(edpphy->pclk), "Failed to get GRF clock\n");
++
++	ret = devm_add_action_or_reset(dev, rockchip_edp_phy_put_pclk, edpphy->pclk);
++	if (ret)
++		return ret;
+ 
+ 	phy = devm_phy_create(dev, NULL, &rockchip_edp_phy_ops);
+ 	if (IS_ERR(phy))

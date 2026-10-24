@@ -1,0 +1,97 @@
+From: Damon Ding <damon.ding@rock-chips.com>
+Date: Fri, 30 Oct 2026 14:49:00 +0800
+Subject: [PATCH v4 1/6] dt-bindings: display: rockchip: analogix-dp: Add support for RK3568
+
+Document the "rockchip,rk3568-edp" compatible.  Like RK3576/RK3588,
+the RK3568 eDP controller has the dp/pclk/hclk clocks and dp/apb
+resets, but unlike them it does not use GRF registers, so make the
+"rockchip,grf" property conditional on the SoC.
+
+Also document the avdd-0v9 and avdd-1v8 supplies, which are needed by
+the RK3568 eDP controller.
+
+Link: https://lore.kernel.org/r/20261030064905.2248999-2-damon.ding@rock-chips.com
+Signed-off-by: Damon Ding <damon.ding@rock-chips.com>
+
+---
+--- a/Documentation/devicetree/bindings/display/rockchip/rockchip,analogix-dp.yaml
++++ b/Documentation/devicetree/bindings/display/rockchip/rockchip,analogix-dp.yaml
+@@ -15,6 +15,7 @@
+     enum:
+       - rockchip,rk3288-dp
+       - rockchip,rk3399-edp
++      - rockchip,rk3568-edp
+       - rockchip,rk3588-edp
+ 
+   clocks:
+@@ -23,10 +24,7 @@
+ 
+   clock-names:
+     minItems: 2
+-    items:
+-      - const: dp
+-      - const: pclk
+-      - const: grf
++    maxItems: 3
+ 
+   power-domains:
+     maxItems: 1
+@@ -40,6 +38,16 @@
+     items:
+       - const: dp
+       - const: apb
++
++  avdd-0v9-supply:
++    description:
++      A 0.9V supply that powers up the SoC internal circuitry. The actual
++      supply source varies between different boards.
++
++  avdd-1v8-supply:
++    description:
++      A 1.8V supply that powers up the SoC internal circuitry. The actual
++      supply source varies between different boards.
+ 
+   rockchip,grf:
+     $ref: /schemas/types.yaml#/definitions/phandle
+@@ -55,10 +63,40 @@
+   - clock-names
+   - resets
+   - reset-names
+-  - rockchip,grf
+ 
+ allOf:
+   - $ref: /schemas/display/bridge/analogix,dp.yaml#
++
++  - if:
++      properties:
++        compatible:
++          contains:
++            const: rockchip,rk3568-edp
++    then:
++      properties:
++        rockchip,grf: false
++        clocks:
++          minItems: 3
++        clock-names:
++          items:
++            - const: dp
++            - const: pclk
++            - const: hclk
++        resets:
++          minItems: 2
++        reset-names:
++          minItems: 2
++    else:
++      properties:
++        clock-names:
++          items:
++            - const: dp
++            - const: pclk
++            - const: grf
++        avdd-0v9-supply: false
++        avdd-1v8-supply: false
++      required:
++        - rockchip,grf
+ 
+   - if:
+       properties:

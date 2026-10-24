@@ -1,0 +1,64 @@
+From: retro98boy <retro98boy@qq.com>
+Subject: [PATCH] drm/panel: edp: Add CLINK-T68 LVDS assembly
+
+Preserve the BSP timing and power delays for the CS5211 display path.
+
+---
+--- a/drivers/gpu/drm/panel/panel-edp.c
++++ b/drivers/gpu/drm/panel/panel-edp.c
+@@ -1660,6 +1660,34 @@
+ 	},
+ };
+ 
++/* CS5211 strap configuration used by the CLINK-T68 LVDS assembly. */
++static const struct display_timing clink_t68_lvds_timing = {
++	.pixelclock = { 150000000, 150000000, 150000000 },
++	.hactive = { 1920, 1920, 1920 },
++	.hfront_porch = { 120, 120, 120 },
++	.hback_porch = { 115, 115, 115 },
++	.hsync_len = { 32, 32, 32 },
++	.vactive = { 1080, 1080, 1080 },
++	.vfront_porch = { 20, 20, 20 },
++	.vback_porch = { 34, 34, 34 },
++	.vsync_len = { 6, 6, 6 },
++	.flags = DISPLAY_FLAGS_HSYNC_LOW | DISPLAY_FLAGS_VSYNC_LOW |
++		 DISPLAY_FLAGS_DE_LOW | DISPLAY_FLAGS_PIXDATA_NEGEDGE |
++		 DISPLAY_FLAGS_SYNC_NEGEDGE,
++};
++
++static const struct panel_desc clink_t68_lvds = {
++	.timings = &clink_t68_lvds_timing,
++	.num_timings = 1,
++	.bpc = 8,
++	.delay = {
++		.hpd_absent = 120,
++		.enable = 150,
++		.disable = 300,
++		.unprepare = 120,
++	},
++};
++
+ static const struct of_device_id platform_of_match[] = {
+ 	{
+ 		/* Must be first */
+@@ -1682,6 +1710,9 @@
+ 	 * bus.
+ 	 */
+ 	{
++		.compatible = "clink,t68-lvds",
++		.data = &clink_t68_lvds,
++	}, {
+ 		.compatible = "auo,b101ean01",
+ 		.data = &auo_b101ean01,
+ 	}, {
+--- a/Documentation/devicetree/bindings/display/panel/panel-edp-legacy.yaml
++++ b/Documentation/devicetree/bindings/display/panel/panel-edp-legacy.yaml
+@@ -44,6 +44,8 @@
+       - boe,nv133fhm-n62
+         # BOE NV140FHM-N49 14.0" FHD a-Si FT panel
+       - boe,nv140fhmn49
++        # CLINK-T68 1920x1080 LVDS assembly with a CS5211 eDP bridge
++      - clink,t68-lvds
+         # FriendlyELEC HD702E 800x1280 LCD panel
+       - friendlyarm,hd702e
+         # Innolux Corporation 11.6" WXGA (1366x768) TFT LCD panel

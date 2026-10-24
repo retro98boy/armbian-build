@@ -1,0 +1,46 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: retro98boy <retro98boy@qq.com>
+Date: Mon, 2 Nov 2026 11:45:00 +0800
+Subject: [PATCH] net: phy: realtek: enable the optional RTL8201F reference clock
+
+DC-A568B supplies the RTL8201F reference clock from the RK3568 clock controller.
+Enable this clock before PHY register access. Without it, MDIO reads return 0xffff.
+Managed cleanup releases the clock when the PHY driver detaches.
+PHYs without a declared clock keep their current behavior.
+---
+ drivers/net/phy/realtek/realtek_main.c | 14 ++++++++++++++
+ 1 file changed, 14 insertions(+)
+
+diff --git a/drivers/net/phy/realtek/realtek_main.c b/drivers/net/phy/realtek/realtek_main.c
+--- a/drivers/net/phy/realtek/realtek_main.c
++++ b/drivers/net/phy/realtek/realtek_main.c
+@@ -775,6 +775,19 @@
+ 	return ret;
+ }
+ 
++static int rtl8201f_probe(struct phy_device *phydev)
++{
++	struct device *dev = &phydev->mdio.dev;
++	struct clk *clk;
++
++	clk = devm_clk_get_optional_enabled(dev, NULL);
++	if (IS_ERR(clk))
++		return dev_err_probe(dev, PTR_ERR(clk),
++				     "failed to enable PHY clock\n");
++
++	return 0;
++}
++
+ static int rtl8201_ack_interrupt(struct phy_device *phydev)
+ {
+ 	int err;
+@@ -3103,6 +3116,7 @@
+ 	}, {
+ 		PHY_ID_MATCH_EXACT(0x001cc816),
+ 		.name		= "RTL8201F Fast Ethernet",
++		.probe		= rtl8201f_probe,
+ 		.config_intr	= &rtl8201_config_intr,
+ 		.handle_interrupt = rtl8201_handle_interrupt,
+ 		.suspend	= genphy_suspend,
+-- 
+2.51.0

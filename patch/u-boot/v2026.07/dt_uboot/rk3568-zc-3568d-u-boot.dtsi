@@ -1,0 +1,7 @@
+// SPDX-License-Identifier: GPL-2.0+
+#include "rk356x-u-boot.dtsi"
+
+&gpio0 {
+	bootph-all;
+	external-watchdog-disable { bootph-all; };
+};

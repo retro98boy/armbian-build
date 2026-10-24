@@ -1,0 +1,90 @@
+From: Damon Ding <damon.ding@rock-chips.com>
+Date: Fri, 30 Oct 2026 14:49:04 +0800
+Subject: [PATCH v4 5/6] drm/rockchip: analogix_dp: Add support for RK3568
+
+The RK3568 eDP controller does not require any GRF configurations,
+so make the "rockchip,grf" property optional for RK3568. Also enable the
+optional avdd-0v9 and avdd-1v8 supplies which power the eDP PHY.
+
+Add the "rockchip,rk3568-edp" compatible along with its chip data;
+the register base in the chip data is used to match the platform
+device memory resource.
+
+Link: https://lore.kernel.org/r/20261030064905.2248999-6-damon.ding@rock-chips.com
+Signed-off-by: Damon Ding <damon.ding@rock-chips.com>
+[Restrict the new GRF and supply handling to RK3568.]
+Signed-off-by: retro98boy <retro98boy@qq.com>
+
+---
+--- a/drivers/gpu/drm/rockchip/analogix_dp-rockchip.c
++++ b/drivers/gpu/drm/rockchip/analogix_dp-rockchip.c
+@@ -16,6 +16,7 @@
+ #include <linux/platform_device.h>
+ #include <linux/pm_runtime.h>
+ #include <linux/regmap.h>
++#include <linux/regulator/consumer.h>
+ #include <linux/reset.h>
+ #include <linux/clk.h>
+ 
+@@ -334,12 +335,19 @@
+ 	struct device *dev = dp->dev;
+ 	struct device_node *np = dev->of_node;
+ 	struct clk *clk;
+-
+-	dp->grf = syscon_regmap_lookup_by_phandle(np, "rockchip,grf");
++	int ret;
++
++	if (dp->data->chip_type == RK3568_EDP)
++		dp->grf = syscon_regmap_lookup_by_phandle_optional(np, "rockchip,grf");
++	else
++		dp->grf = syscon_regmap_lookup_by_phandle(np, "rockchip,grf");
+ 	if (IS_ERR(dp->grf)) {
+ 		DRM_DEV_ERROR(dev, "failed to get rockchip,grf property\n");
+ 		return PTR_ERR(dp->grf);
+ 	}
++
++	if (!dp->grf && (dp->data->lcdc_sel.valid || dp->data->edp_mode.valid))
++		return dev_err_probe(dev, -EINVAL, "Missing required GRF\n");
+ 
+ 	dp->grfclk = devm_clk_get(dev, "grf");
+ 	if (PTR_ERR(dp->grfclk) == -ENOENT) {
+@@ -372,6 +380,16 @@
+ 	if (IS_ERR(dp->apbrst)) {
+ 		DRM_DEV_ERROR(dev, "failed to get apb reset control\n");
+ 		return PTR_ERR(dp->apbrst);
++	}
++
++	if (dp->data->chip_type == RK3568_EDP) {
++		ret = devm_regulator_get_enable_optional(dev, "avdd-0v9");
++		if (ret && ret != -ENODEV)
++			return dev_err_probe(dev, ret, "Failed to enable avdd-0v9\n");
++
++		ret = devm_regulator_get_enable_optional(dev, "avdd-1v8");
++		if (ret && ret != -ENODEV)
++			return dev_err_probe(dev, ret, "Failed to enable avdd-1v8\n");
+ 	}
+ 
+ 	return 0;
+@@ -574,6 +592,14 @@
+ 		.lcdc_sel = GRF_REG_FIELD(0x025c, 5, 5),
+ 		.chip_type = RK3288_DP,
+ 		.reg = 0xff970000,
++	},
++	{ /* sentinel */ }
++};
++
++static const struct rockchip_dp_chip_data rk3568_edp[] = {
++	{
++		.chip_type = RK3568_EDP,
++		.reg = 0xfe0c0000,
+ 	},
+ 	{ /* sentinel */ }
+ };
+@@ -595,6 +621,7 @@
+ static const struct of_device_id rockchip_dp_dt_ids[] = {
+ 	{.compatible = "rockchip,rk3288-dp", .data = &rk3288_dp },
+ 	{.compatible = "rockchip,rk3399-edp", .data = &rk3399_edp },
++	{.compatible = "rockchip,rk3568-edp", .data = &rk3568_edp },
+ 	{.compatible = "rockchip,rk3588-edp", .data = &rk3588_edp },
+ 	{}
+ };

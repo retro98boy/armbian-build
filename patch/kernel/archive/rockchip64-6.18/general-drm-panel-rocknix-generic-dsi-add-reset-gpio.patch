@@ -1,0 +1,51 @@
+From: retro98boy <retro98boy@qq.com>
+Subject: [PATCH] drm/panel: rocknix: Support a second reset GPIO
+
+Keep an optional reset1 GPIO synchronized with the existing reset GPIO.
+
+--- a/drivers/gpu/drm/panel/panel-rocknix-generic-dsi.c
++++ b/drivers/gpu/drm/panel/panel-rocknix-generic-dsi.c
+@@ -68,6 +68,7 @@
+     struct drm_panel panel;
+     struct gpio_desc *enable_gpio;
+     struct gpio_desc *reset_gpio;
++    struct gpio_desc *reset1_gpio;
+     struct regulator *vdd;
+     struct regulator *iovcc;
+ 
+@@ -416,11 +417,13 @@
+ 
+     if (ctx->enable_gpio) { gpiod_set_value_cansleep(ctx->enable_gpio, 0); }
+     gpiod_set_value_cansleep(ctx->reset_gpio, 1);
++    gpiod_set_value_cansleep(ctx->reset1_gpio, 1);
+ 
+     regulator_disable(ctx->iovcc);
+     regulator_disable(ctx->vdd);
+ 
+     gpiod_set_value_cansleep(ctx->reset_gpio, 1);
++    gpiod_set_value_cansleep(ctx->reset1_gpio, 1);
+ 
+     ctx->prepared = false;
+ 
+@@ -453,8 +456,10 @@
+     msleep(ctx->delays.prepare);
+ 
+     gpiod_set_value_cansleep(ctx->reset_gpio, 1);
++    gpiod_set_value_cansleep(ctx->reset1_gpio, 1);
+     msleep(ctx->delays.reset);
+     gpiod_set_value_cansleep(ctx->reset_gpio, 0);
++    gpiod_set_value_cansleep(ctx->reset1_gpio, 0);
+ 
+     msleep(ctx->delays.init);
+ 
+@@ -593,6 +598,10 @@
+         dev_err(dev, "cannot get reset gpio\n");
+         return PTR_ERR(ctx->reset_gpio);
+     }
++
++    ctx->reset1_gpio = devm_gpiod_get_optional(dev, "reset1", GPIOD_OUT_LOW);
++    if (IS_ERR(ctx->reset1_gpio))
++        return PTR_ERR(ctx->reset1_gpio);
+ 
+     ctx->vdd = devm_regulator_get(dev, "vdd");
+     if (IS_ERR(ctx->vdd)) {
