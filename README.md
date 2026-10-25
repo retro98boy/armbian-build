@@ -5,6 +5,7 @@
 | BesTV R3300-L             | 已提交上游   | 持有        | mainline U-Boot                          |
 | CAINIAO CNIoT-CORE        | 已提交上游   | 不再持有    | mainline U-Boot                          |
 | KICKPI K3B                | 已提交上游   | 持有        | mainline U-Boot                          |
+| Lenovo Legion Y700 Gen4   | 已提交上游   | 持有        | XBL/ABL + Project Aloha/GRUB             |
 | CAINIAO LEMO XIAOC        | 本仓库      | 不再持有    | mainline U-Boot                          |
 | CAINIAO XiaoYi Pro        | 本仓库      | 持有        | vendor U-Boot (secure boot)              |
 | GOODMOBI A02              | 本仓库      | 持有        | mainline U-Boot                          |
