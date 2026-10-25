@@ -1,5 +1,5 @@
 # Rockchip RK3588 octa core 4-32GB RAM 32-256GB eMMC GBE SoM (260-pin SO-DIMM, Jetson TX2 NX compatible)
-declare -g BOARD_NAME="Mixtile Core3588E"
+declare -g BOARD_NAME="Core3588E"
 declare -g BOARD_VENDOR="mixtile"
 declare -g BOARDFAMILY="rockchip-rk3588"
 declare -g BOARD_MAINTAINER="rpardini"
@@ -7,7 +7,6 @@ declare -g INTRODUCED="2023"
 declare -g KERNEL_TARGET="edge,vendor"
 declare -g BOOT_FDT_FILE="rockchip/rk3588-mixtile-core3588e.dtb" # same name vendor and edge
 declare -g BOOT_SCENARIO="spl-blobs"
-declare -g BOOT_SOC="rk3588"
 declare -g BOOTCONFIG="mixtile-core3588e-rk3588_defconfig" # edge/mainline
 declare -g IMAGE_PARTITION_TABLE="gpt"
 # Does NOT have a UEFI_EDK2_BOARD_ID

@@ -250,6 +250,14 @@ function do_main_configuration() {
 			;;
 	esac
 
+	# Mainline firmware git ref. Empty: use the newest linux-firmware release tag (mainline_firmware_resolve_git_ref).
+	# Set it to pin a version, for example "tag:20260916" or "commit:<sha1>"; "branch:main" follows upstream daily.
+	declare -g MAINLINE_FIRMWARE_BRANCH="${MAINLINE_FIRMWARE_BRANCH:-}"
+
+	# Armbian firmware. Also read the old names ARMBIAN_FIRMWARE_GIT_SOURCE and ARMBIAN_FIRMWARE_GIT_BRANCH (plain branch name).
+	declare -g -r ARMBIAN_FIRMWARE_SOURCE="${ARMBIAN_FIRMWARE_SOURCE:-${ARMBIAN_FIRMWARE_GIT_SOURCE:-"https://github.com/armbian/firmware"}}"
+	declare -g -r ARMBIAN_FIRMWARE_BRANCH="${ARMBIAN_FIRMWARE_BRANCH:-"branch:${ARMBIAN_FIRMWARE_GIT_BRANCH:-master}"}"
+
 	[[ $USE_GITHUB_UBOOT_MIRROR == yes ]] && UBOOT_MIRROR=github # legacy compatibility?
 
 	# A CI runner that advertises a pass-through git proxy (GITPROXY_ADDRESS,
@@ -284,8 +292,8 @@ function do_main_configuration() {
 		gitee)
 			declare -g -r MAINLINE_UBOOT_SOURCE='https://gitee.com/mirrors/u-boot.git'
 			;;
-		denx)
-			declare -g -r MAINLINE_UBOOT_SOURCE='https://source.denx.de/u-boot/u-boot.git'
+		denx) # official upstream; source.denx.de redirects there
+			declare -g -r MAINLINE_UBOOT_SOURCE='https://git.u-boot-project.org/u-boot/u-boot.git'
 			;;
 		*)
 			declare -g -r MAINLINE_UBOOT_SOURCE="${GITHUB_SOURCE}/u-boot/u-boot"
