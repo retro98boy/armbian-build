@@ -1,0 +1,50 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zinan Zhou <zinan@mieulab.com>
+Date: Sat, 18 Jul 2026 18:07:10 +0900
+Subject: [PATCH] drm/meson: constrain the DW-HDMI regmap range
+
+The DesignWare HDMI regmap declares 0x10000 as its inclusive maximum
+register. A regmap traversal can consequently read one byte past the
+directly mapped G12A 64 KiB resource. It also treats the Meson TOP window
+from offset 0x8000 as DWC registers. On the older indirect interface, the
+address is truncated to 16 bits and aliases register zero.
+
+Limit the regmap to 0x7e12, the last register defined by the supported
+Synopsys HDMI controller. This also keeps register iteration below the
+Meson TOP register window at offset 0x8000.
+
+Fixes: 3f68be7d8e96 ("drm/meson: Add support for HDMI encoder and DW-HDMI bridge + PHY")
+Assisted-by: Codex:gpt-5.6-sol
+Link: https://lore.kernel.org/linux-amlogic/20260718090710.70534-1-zinan@mieulab.com/
+Signed-off-by: Zinan Zhou <zinan@mieulab.com>
+---
+ drivers/gpu/drm/meson/meson_dw_hdmi.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/gpu/drm/meson/meson_dw_hdmi.c b/drivers/gpu/drm/meson/meson_dw_hdmi.c
+index fef1702acb14..1004108fb7ca 100644
+--- a/drivers/gpu/drm/meson/meson_dw_hdmi.c
++++ b/drivers/gpu/drm/meson/meson_dw_hdmi.c
+@@ -100,6 +100,8 @@
+ #define HDMITX_DWC_ADDR_REG	0x10
+ #define HDMITX_DWC_DATA_REG	0x14
+ #define HDMITX_DWC_CTRL_REG	0x18
++/* Last DWC register; direct layouts place the TOP block at offset 0x8000. */
++#define HDMITX_DWC_MAX_REGISTER	0x7e12
+ 
+ /* HHI Registers */
+ #define HHI_MEM_PD_REG0		0x100 /* 0x40 */
+@@ -564,7 +566,7 @@ static const struct regmap_config meson_dw_hdmi_regmap_config = {
+ 	.val_bits = 8,
+ 	.reg_read = meson_dw_hdmi_reg_read,
+ 	.reg_write = meson_dw_hdmi_reg_write,
+-	.max_register = 0x10000,
++	.max_register = HDMITX_DWC_MAX_REGISTER,
+ 	.fast_io = true,
+ };
+ 
+
+base-commit: b0a652436b892eb9a036a031b33099dca036faaa
+-- 
+2.43.0
+

@@ -1,0 +1,67 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+
+#include "meson-gxl.dtsi"
+#include "meson-gxl-mali.dtsi"
+
+/delete-node/ &hdmi_tx;
+
+/ {
+	soc {
+		hdmi_tx: hdmi-tx@da800000 {
+			compatible = "amlogic,meson-gxlx2-dw-hdmi";
+			reg = <0x0 0xda800000 0x0 0x10000>;
+			interrupts = <GIC_SPI 57 IRQ_TYPE_EDGE_RISING>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			#sound-dai-cells = <0>;
+			sound-name-prefix = "HDMITX";
+			resets = <&reset RESET_HDMITX_CAPB3>,
+				 <&reset RESET_HDMI_SYSTEM_RESET>,
+				 <&reset RESET_HDMI_TX>;
+			reset-names = "hdmitx_apb", "hdmitx", "hdmitx_phy";
+			clocks = <&clkc CLKID_HDMI>,
+				 <&clkc CLKID_HDMI_PCLK>,
+				 <&clkc CLKID_GCLK_VENCI_INT0>;
+			clock-names = "isfr", "iahb", "venci";
+			power-domains = <&pwrc PWRC_GXBB_VPU_ID>;
+			assigned-clocks = <&clkc CLKID_HDMI_SEL>, <&clkc CLKID_HDMI>;
+			assigned-clock-parents = <&xtal>, <0>;
+			assigned-clock-rates = <0>, <24000000>;
+			status = "disabled";
+
+			port@0 {
+				reg = <0>;
+
+				hdmi_tx_in: endpoint {
+					remote-endpoint = <&hdmi_tx_out>;
+				};
+			};
+
+			port@1 {
+				reg = <1>;
+
+				hdmi_tx_tmds_out: endpoint {
+				};
+			};
+		};
+	};
+};
+
+&ethmac {
+	phy-mode = "rmii";
+	phy-handle = <&internal_phy>;
+};
+
+/* Mali 450-MP2 */
+&mali {
+	interrupts = <GIC_SPI 160 IRQ_TYPE_LEVEL_HIGH>,
+		     <GIC_SPI 161 IRQ_TYPE_LEVEL_HIGH>,
+		     <GIC_SPI 162 IRQ_TYPE_LEVEL_HIGH>,
+		     <GIC_SPI 163 IRQ_TYPE_LEVEL_HIGH>,
+		     <GIC_SPI 164 IRQ_TYPE_LEVEL_HIGH>,
+		     <GIC_SPI 165 IRQ_TYPE_LEVEL_HIGH>,
+		     <GIC_SPI 166 IRQ_TYPE_LEVEL_HIGH>,
+		     <GIC_SPI 167 IRQ_TYPE_LEVEL_HIGH>;
+	interrupt-names = "gp", "gpmmu", "pp", "pmu",
+		"pp0", "ppmmu0", "pp1", "ppmmu1";
+};

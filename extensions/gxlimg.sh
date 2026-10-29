@@ -42,7 +42,7 @@ function gxlimg_repack_fip_with_new_uboot() {
 	run_host_command_logged rm -fv "${gxlimg_extract_temp_dir}/bl33.enc"
 
 	case $2 in
-		gxl)
+		gxl | gxlx2)
 			display_alert "${BOARD} gxlimg gxl" "Encrypting new bl33 from incoming u-boot" "info"
 			run_host_command_logged "${glximg_bin}" \
 				-t bl3x \
