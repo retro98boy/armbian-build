@@ -10,6 +10,7 @@ config/boards/anbernic-rg-ds.conf		@crackerjacques
 config/boards/anbernic-rg-rotate.csc		@crackerjacques
 config/boards/anbernic-rg-vita-pro.conf		@crackerjacques
 config/boards/arduino-uno-q.conf		@SuperKali @sdeleeuw
+config/boards/armsom-cm5-io.csc		@gahingwoo
 config/boards/armsom-cm7s-io.csc		@amazingfate
 config/boards/armsom-forge1.csc		@amazingfate
 config/boards/armsom-sige1.csc		@amazingfate
@@ -43,6 +44,7 @@ config/boards/beagley-ai.conf		@Grippy98
 config/boards/bestv-r3300-l.csc		@retro98boy
 config/boards/bigtreetech-cb1.conf		@JohnTheCoolingFan
 config/boards/bigtreetech-cb2.conf		@JohnTheCoolingFan
+config/boards/boardcon-em3588.conf		@boardcon-arm
 config/boards/boardcon-sbc3568.conf		@boardcon-arm
 config/boards/cainiao-cniot-core.csc		@retro98boy
 config/boards/cix-acpi.conf		@HeyMeco
@@ -61,7 +63,7 @@ config/boards/ebyte-ecb41-pge.csc		@vidplace7
 config/boards/eltay-rm66.csc		@RiPetitor
 config/boards/espressobin.conf		@igorpecovnik
 config/boards/fine3399.csc		@Lemon1151
-config/boards/firefly-aibox-k3.wip		@leoppark94
+config/boards/firefly-aibox-k3.csc		@leoppark94
 config/boards/firefly-itx-3588j.csc		@SeeleVolleri
 config/boards/forlinx-ok3506-s12.csc		@vidplace7
 config/boards/friendlyelec-rk3588.conf		@SuperKali @efectn @rpardini
@@ -73,6 +75,7 @@ config/boards/graperain-g3568-v2.csc		@rbqvq
 config/boards/h96-tvbox-3566.tvb		@hqnicolas
 config/boards/helios4.conf		@leggewie
 config/boards/helios64.conf		@iav @prahal
+config/boards/imb3588.conf		@JackHuang021
 config/boards/inovato-quadra.conf		@igorpecovnik
 config/boards/jethubj100.conf		@adeepn
 config/boards/jethubj200.conf		@adeepn
@@ -147,6 +150,7 @@ config/boards/odroidc4.conf		@igorpecovnik
 config/boards/odroidhc4.conf		@igorpecovnik
 config/boards/odroidm1.conf		@rpardini
 config/boards/odroidm2.conf		@mlegenovic
+config/boards/odroidu2.conf		@BKPepe
 config/boards/oneplus-kebab.conf		@amazingfate
 config/boards/orangepi-cm5.wip		@ECO1AI
 config/boards/orangepi3-lts.conf		@pyavitz
@@ -183,6 +187,7 @@ config/boards/radxa-nio-12l.conf		@HeyMeco
 config/boards/radxa-rock-4d.conf		@HeyMeco
 config/boards/radxa-zero3.conf		@igorpecovnik
 config/boards/recomputer-rk3576-devkit.conf		@HeyMeco @Pillar1989
+config/boards/recomputer-rk3576-industrial.csc		@Pillar1989
 config/boards/recomputer-rk3576-module-devkit.csc		@Pillar1989
 config/boards/recomputer-rk3588-devkit.conf		@HeyMeco @Pillar1989 @djurny
 config/boards/recore.csc		@eliasbakken
@@ -224,6 +229,7 @@ config/boards/tinkerboard.conf		@paolosabatino
 config/boards/tmds62levm.conf		@jonaswood01
 config/boards/tmds64evm.conf		@jonaswood01
 config/boards/tq-smarc2-tqma8mpxs.conf		@schmiedelm
+config/boards/turris-omnia.conf		@BKPepe
 config/boards/udoo.conf		@igorpecovnik
 config/boards/uefi-arm64-dt.conf		@amazingfate
 config/boards/uefi-arm64.conf		@igorpecovnik @rpardini
@@ -248,8 +254,7 @@ config/boards/ztl-a568.wip		@yanhy2000
 config/kernel/linux-agilex5-*.config		@dinguyen702
 config/kernel/linux-cix-p1-*.config		@HeyMeco
 config/kernel/linux-d1-*.config		@khaliforce
-config/kernel/linux-filogic-*.config		@JiaY-shi
-config/kernel/linux-filogic-mt7986-*.config		@SuperKali
+config/kernel/linux-filogic-*.config		@JiaY-shi @SuperKali
 config/kernel/linux-genio-*.config		@HeyMeco
 config/kernel/linux-imx6-*.config		@igorpecovnik
 config/kernel/linux-imx8m-*.config		@lucshl @schmiedelm
@@ -264,18 +269,19 @@ config/kernel/linux-meson-*.config		@baldpope @juanlufont
 config/kernel/linux-meson-s4t7-*.config		@adeepn @igorpecovnik @pyavitz @rpardini
 config/kernel/linux-meson64-*.config		@SteeManMI @adeepn @igorpecovnik @jomadeto @pyavitz @retro98boy @rpardini
 config/kernel/linux-mt7623-*.config		@igorpecovnik
-config/kernel/linux-mvebu-*.config		@leggewie
+config/kernel/linux-mvebu-*.config		@BKPepe @leggewie
 config/kernel/linux-mvebu64-*.config		@igorpecovnik
 config/kernel/linux-nuvoton-ma35d1-*.config		@TuAFBogey
+config/kernel/linux-odroidu2-*.config		@BKPepe
 config/kernel/linux-phytium-embedded-*.config		@chainsx
 config/kernel/linux-qcs6490-*.config		@HeyMeco @SuperKali
 config/kernel/linux-qrb2210-*.config		@SuperKali @sdeleeuw
 config/kernel/linux-realtek-rtd129x-*.config		@igorpecovnik
-config/kernel/linux-rk35xx-*.config		@CodeChenL @HeyMeco @JohnTheCoolingFan @MarusGradinaru @Pillar1989 @RiPetitor @SeeleVolleri @SuperKali @amazingfate @andyshrk @boardcon-arm @chainsx @djurny @efectn @ginkage @hqnicolas @ifroncy01 @igorpecovnik @kamilsaigol @leoppark94 @linhz0hz @prahal @rpardini @schwar3kat @wukibaka
+config/kernel/linux-rk35xx-*.config		@CodeChenL @HeyMeco @JackHuang021 @JohnTheCoolingFan @MarusGradinaru @Pillar1989 @RiPetitor @SeeleVolleri @SuperKali @amazingfate @andyshrk @boardcon-arm @chainsx @djurny @efectn @gahingwoo @ginkage @hqnicolas @ifroncy01 @igorpecovnik @kamilsaigol @leoppark94 @linhz0hz @prahal @rpardini @schwar3kat @wukibaka
 config/kernel/linux-rockchip-*.config		@amazingfate @paolosabatino @vidplace7
 config/kernel/linux-rockchip-rv1106-*.config		@vidplace7
 config/kernel/linux-rockchip-rv1126-*.config		@hqnicolas
-config/kernel/linux-rockchip64-*.config		@CodeChenL @ECO1AI @HackingGate @HeyMeco @JohnTheCoolingFan @Lemon1151 @MarusGradinaru @Pillar1989 @RiPetitor @Shadowrom2020 @SuperKali @TheSnowfield @ahoneybun @amazingfate @andyshrk @brentr @chainsx @cjkoenig @crackerjacques @djurny @efectn @hqnicolas @iav @ifroncy01 @igorpecovnik @kunxiang1 @lch08 @leoppark94 @liamhnam @linhz0hz @miskin-lee @mlegenovic @paolosabatino @prahal @pyavitz @rbqvq @redrathnure @retro98boy @rpardini @schwar3kat @sckiyo @sicXnull @torte71 @utlark @yanhy2000
+config/kernel/linux-rockchip64-*.config		@CodeChenL @ECO1AI @HackingGate @HeyMeco @JohnTheCoolingFan @Lemon1151 @MarusGradinaru @Pillar1989 @RiPetitor @Shadowrom2020 @SuperKali @TheSnowfield @ahoneybun @amazingfate @andyshrk @brentr @chainsx @cjkoenig @crackerjacques @djurny @efectn @gahingwoo @hqnicolas @iav @ifroncy01 @igorpecovnik @kunxiang1 @lch08 @leoppark94 @liamhnam @linhz0hz @miskin-lee @mlegenovic @paolosabatino @prahal @pyavitz @rbqvq @redrathnure @retro98boy @rpardini @schwar3kat @sckiyo @sicXnull @torte71 @utlark @yanhy2000
 config/kernel/linux-s5p6818-*.config		@igorpecovnik
 config/kernel/linux-sc8280xp-*.config		@HeyMeco @PeterChrz @SuperKali @rpardini
 config/kernel/linux-sm8250-*.config		@FantasyGmm @amazingfate
@@ -320,15 +326,16 @@ config/sources/families/meson-s4t7.conf		@adeepn @igorpecovnik @pyavitz @rpardin
 config/sources/families/meson-sm1.conf		@igorpecovnik @rpardini
 config/sources/families/meson8b.conf		@baldpope @juanlufont
 config/sources/families/mt7623.conf		@igorpecovnik
-config/sources/families/mvebu.conf		@leggewie
+config/sources/families/mvebu.conf		@BKPepe @leggewie
 config/sources/families/mvebu64.conf		@igorpecovnik
 config/sources/families/nuvoton-ma35d1.conf		@TuAFBogey
+config/sources/families/odroidu2.conf		@BKPepe
 config/sources/families/phytium-embedded.conf		@chainsx
 config/sources/families/qcs6490.conf		@HeyMeco @SuperKali
 config/sources/families/qrb2210.conf		@SuperKali @sdeleeuw
 config/sources/families/realtek-rtd129x.conf		@igorpecovnik
-config/sources/families/rk35xx.conf		@CodeChenL @HackingGate @HeyMeco @JohnTheCoolingFan @MarusGradinaru @Pillar1989 @RiPetitor @SuperKali @amazingfate @andyshrk @boardcon-arm @cjkoenig @crackerjacques @efectn @hqnicolas @ifroncy01 @igorpecovnik @kunxiang1 @pyavitz @retro98boy @rpardini @sckiyo @wukibaka @yanhy2000
-config/sources/families/rockchip-rk3588.conf		@ECO1AI @HeyMeco @JohnTheCoolingFan @Pillar1989 @SeeleVolleri @SuperKali @amazingfate @andyshrk @chainsx @djurny @efectn @ginkage @ifroncy01 @igorpecovnik @kamilsaigol @lch08 @leoppark94 @linhz0hz @miskin-lee @prahal @rpardini @schwar3kat
+config/sources/families/rk35xx.conf		@CodeChenL @HackingGate @HeyMeco @JohnTheCoolingFan @MarusGradinaru @Pillar1989 @RiPetitor @SuperKali @amazingfate @andyshrk @boardcon-arm @cjkoenig @crackerjacques @efectn @gahingwoo @hqnicolas @ifroncy01 @igorpecovnik @kunxiang1 @pyavitz @retro98boy @rpardini @sckiyo @wukibaka @yanhy2000
+config/sources/families/rockchip-rk3588.conf		@ECO1AI @HeyMeco @JackHuang021 @JohnTheCoolingFan @Pillar1989 @SeeleVolleri @SuperKali @amazingfate @andyshrk @boardcon-arm @chainsx @djurny @efectn @ginkage @ifroncy01 @igorpecovnik @kamilsaigol @lch08 @leoppark94 @linhz0hz @miskin-lee @prahal @rpardini @schwar3kat
 config/sources/families/rockchip-rv1106.conf		@vidplace7
 config/sources/families/rockchip-rv1126.conf		@hqnicolas
 config/sources/families/rockchip.conf		@amazingfate @paolosabatino @vidplace7
@@ -364,8 +371,7 @@ config/sources/families/uefi-x86.conf		@igorpecovnik @rpardini
 patch/atf/atf-agilex5/		@dinguyen702
 patch/atf/atf-arm64/		@igorpecovnik @rpardini
 patch/atf/atf-cix-p1/		@HeyMeco
-patch/atf/atf-filogic-mt7986/		@SuperKali
-patch/atf/atf-filogic/		@JiaY-shi
+patch/atf/atf-filogic/		@JiaY-shi @SuperKali
 patch/atf/atf-imx8m/		@lucshl
 patch/atf/atf-imx8ulp/		@govindsi
 patch/atf/atf-k3-beagle/		@Grippy98
@@ -393,8 +399,7 @@ patch/atf/atf-uefi-arm64-dt/		@amazingfate
 patch/kernel/archive/agilex5-*/		@dinguyen702
 patch/kernel/archive/cix-*/		@HeyMeco
 patch/kernel/archive/d1-*/		@khaliforce
-patch/kernel/archive/filogic-*/		@JiaY-shi
-patch/kernel/archive/filogic-mt7986-*/		@SuperKali
+patch/kernel/archive/filogic-*/		@JiaY-shi @SuperKali
 patch/kernel/archive/genio-*/		@HeyMeco
 patch/kernel/archive/imx6-*/		@igorpecovnik
 patch/kernel/archive/imx8m-*/		@lucshl @schmiedelm
@@ -408,14 +413,15 @@ patch/kernel/archive/meson-*/		@baldpope @juanlufont
 patch/kernel/archive/meson-s4t7-*/		@adeepn @igorpecovnik @pyavitz @rpardini
 patch/kernel/archive/meson64-*/		@SteeManMI @adeepn @igorpecovnik @jomadeto @pyavitz @retro98boy @rpardini
 patch/kernel/archive/mt7623-*/		@igorpecovnik
-patch/kernel/archive/mvebu-*/		@leggewie
+patch/kernel/archive/mvebu-*/		@BKPepe @leggewie
 patch/kernel/archive/mvebu64-*/		@igorpecovnik
+patch/kernel/archive/odroidu2-*/		@BKPepe
 patch/kernel/archive/phytium-embedded-*/		@chainsx
 patch/kernel/archive/qcs6490-*/		@HeyMeco @SuperKali
 patch/kernel/archive/qrb2210-*/		@SuperKali @sdeleeuw
 patch/kernel/archive/realtek-rtd129x-*/		@igorpecovnik
 patch/kernel/archive/rockchip-*/		@paolosabatino
-patch/kernel/archive/rockchip64-*/		@CodeChenL @ECO1AI @HackingGate @HeyMeco @JohnTheCoolingFan @Lemon1151 @MarusGradinaru @Pillar1989 @RiPetitor @Shadowrom2020 @SuperKali @TheSnowfield @ahoneybun @amazingfate @andyshrk @brentr @chainsx @cjkoenig @crackerjacques @djurny @efectn @hqnicolas @iav @ifroncy01 @igorpecovnik @kunxiang1 @lch08 @leoppark94 @liamhnam @linhz0hz @miskin-lee @mlegenovic @paolosabatino @prahal @pyavitz @rbqvq @redrathnure @retro98boy @rpardini @schwar3kat @sckiyo @sicXnull @torte71 @utlark @yanhy2000
+patch/kernel/archive/rockchip64-*/		@CodeChenL @ECO1AI @HackingGate @HeyMeco @JohnTheCoolingFan @Lemon1151 @MarusGradinaru @Pillar1989 @RiPetitor @Shadowrom2020 @SuperKali @TheSnowfield @ahoneybun @amazingfate @andyshrk @brentr @chainsx @cjkoenig @crackerjacques @djurny @efectn @gahingwoo @hqnicolas @iav @ifroncy01 @igorpecovnik @kunxiang1 @lch08 @leoppark94 @liamhnam @linhz0hz @miskin-lee @mlegenovic @paolosabatino @prahal @pyavitz @rbqvq @redrathnure @retro98boy @rpardini @schwar3kat @sckiyo @sicXnull @torte71 @utlark @yanhy2000
 patch/kernel/archive/s5p6818-*/		@igorpecovnik
 patch/kernel/archive/sc8280xp-*/		@HeyMeco @PeterChrz @SuperKali @rpardini
 patch/kernel/archive/sm8250-*/		@FantasyGmm @amazingfate
@@ -435,15 +441,15 @@ patch/kernel/archive/uefi-arm64-dt-*/		@amazingfate
 patch/kernel/archive/uefi-loong64-*/		@amazingfate
 patch/kernel/archive/uefi-x86-*/		@igorpecovnik @rpardini
 patch/kernel/nuvoton-ma35d1-*/		@TuAFBogey
-patch/kernel/rk35xx-vendor-*/		@CodeChenL @HeyMeco @JohnTheCoolingFan @MarusGradinaru @Pillar1989 @RiPetitor @SeeleVolleri @SuperKali @amazingfate @andyshrk @boardcon-arm @chainsx @djurny @efectn @ginkage @hqnicolas @ifroncy01 @igorpecovnik @kamilsaigol @leoppark94 @linhz0hz @prahal @rpardini @schwar3kat @vidplace7 @wukibaka
+patch/kernel/rk35xx-vendor-*/		@CodeChenL @HeyMeco @JackHuang021 @JohnTheCoolingFan @MarusGradinaru @Pillar1989 @RiPetitor @SeeleVolleri @SuperKali @amazingfate @andyshrk @boardcon-arm @chainsx @djurny @efectn @gahingwoo @ginkage @hqnicolas @ifroncy01 @igorpecovnik @kamilsaigol @leoppark94 @linhz0hz @prahal @rpardini @schwar3kat @vidplace7 @wukibaka
 patch/kernel/rv1106-vendor-*/		@vidplace7
 patch/kernel/rv1126-vendor-*/		@hqnicolas
 patch/kernel/starfive2-*/		@libiunc
 patch/kernel/sun55iw3-syterkit-*/		@chainsx
 patch/kernel/thead-*/		@chainsx
 patch/u-boot/legacy/		@baldpope @chainsx @juanlufont
-patch/u-boot/legacy/u-boot-radxa-rk35xx-v2024.10/		@CodeChenL @HeyMeco @JohnTheCoolingFan @Pillar1989 @SeeleVolleri @SuperKali @amazingfate @chainsx @cjkoenig @djurny @efectn @ginkage @ifroncy01 @igorpecovnik @kamilsaigol @leoppark94 @linhz0hz @rpardini @schwar3kat @wukibaka @yanhy2000
-patch/u-boot/legacy/u-boot-radxa-rk35xx/		@CodeChenL @HeyMeco @JohnTheCoolingFan @Pillar1989 @SeeleVolleri @SuperKali @amazingfate @chainsx @cjkoenig @djurny @efectn @ginkage @ifroncy01 @igorpecovnik @kamilsaigol @leoppark94 @linhz0hz @rpardini @schwar3kat @wukibaka @yanhy2000
+patch/u-boot/legacy/u-boot-radxa-rk35xx-v2024.10/		@CodeChenL @HeyMeco @JackHuang021 @JohnTheCoolingFan @Pillar1989 @SeeleVolleri @SuperKali @amazingfate @boardcon-arm @chainsx @cjkoenig @djurny @efectn @gahingwoo @ginkage @ifroncy01 @igorpecovnik @kamilsaigol @leoppark94 @linhz0hz @rpardini @schwar3kat @wukibaka @yanhy2000
+patch/u-boot/legacy/u-boot-radxa-rk35xx/		@CodeChenL @HeyMeco @JackHuang021 @JohnTheCoolingFan @Pillar1989 @SeeleVolleri @SuperKali @amazingfate @boardcon-arm @chainsx @cjkoenig @djurny @efectn @gahingwoo @ginkage @ifroncy01 @igorpecovnik @kamilsaigol @leoppark94 @linhz0hz @rpardini @schwar3kat @wukibaka @yanhy2000
 patch/u-boot/legacy/u-boot-rockchip-buildroot/		@vidplace7
 patch/u-boot/legacy/u-boot-spacemit-k1/		@pyavitz @sven-ola
 patch/u-boot/legacy/u-boot-spacemit-k3/		@leoppark94 @pyavitz
@@ -459,6 +465,7 @@ patch/u-boot/u-boot-ls1046a/		@tomazzaman
 patch/u-boot/u-boot-meson-s4t7/		@adeepn @igorpecovnik @pyavitz @rpardini
 patch/u-boot/u-boot-nanopi3-2016.01/		@igorpecovnik
 patch/u-boot/u-boot-nuvoton-ma35d1/		@TuAFBogey
+patch/u-boot/u-boot-odroidu2/		@BKPepe
 patch/u-boot/u-boot-qemu-arm64/		@rpardini
 patch/u-boot/u-boot-qemu-x86/		@rpardini
 patch/u-boot/u-boot-qrb2210/		@SuperKali @sdeleeuw
@@ -486,7 +493,7 @@ patch/u-boot/v2026.07-mvebu64/		@igorpecovnik
 patch/u-boot/v2026.07-rk3506/		@amazingfate @vidplace7
 patch/u-boot/v2026.07-sunxi-crust/		@devdotnetorg @igorpecovnik @julioramos0 @pyavitz @schwar3kat
 patch/u-boot/v2026.07-sunxi/		@1ubuntuuser @DylanHP @StephenGraf @TheSnowfield @leggewie @mhawkins-consultant
-patch/u-boot/v2026.07/		@ECO1AI @HeyMeco @Pillar1989 @RiPetitor @Shadowrom2020 @SuperKali @boardcon-arm @brentr @crackerjacques @efectn @hqnicolas @ifroncy01 @igorpecovnik @lucshl @miskin-lee @retro98boy @rpardini @utlark
+patch/u-boot/v2026.07/		@ECO1AI @HeyMeco @Pillar1989 @Shadowrom2020 @SuperKali @boardcon-arm @brentr @crackerjacques @efectn @hqnicolas @ifroncy01 @igorpecovnik @lucshl @miskin-lee @retro98boy @rpardini @utlark
 patch/u-boot/v2026.07/board_friendlyelec-rk3588/		@SuperKali @efectn @rpardini
 patch/u-boot/v2026.07/board_graperain-g3568-v2/		@rbqvq
 patch/u-boot/v2026.07/board_helios4/		@leggewie
@@ -495,4 +502,4 @@ patch/u-boot/v2026.07/board_yy3568/		@hqnicolas
 patch/u-boot/v2026.10-rtd129x/		@igorpecovnik
 patch/u-boot/v2026.10-sunxi/		@igorpecovnik
 patch/u-boot/v2026.10-sunxi64/		@JohnTheCoolingFan @Novice-PG @TallGuy74 @deece @devdotnetorg @eliasbakken @igorpecovnik @juanesf @julioramos0 @juliovendramini @lagosproject @lexfrei @pyavitz @schwar3kat @sicXnull
-patch/u-boot/v2026.10/		@CodeChenL @HeyMeco @JohnTheCoolingFan @Pillar1989 @SuperKali @amazingfate @djurny @efectn @igorpecovnik @jomadeto @khaliforce @kunxiang1 @paolosabatino @rbqvq @rpardini @sckiyo
+patch/u-boot/v2026.10/		@BKPepe @CodeChenL @HeyMeco @JohnTheCoolingFan @Pillar1989 @RiPetitor @SuperKali @amazingfate @djurny @efectn @gahingwoo @igorpecovnik @jomadeto @khaliforce @kunxiang1 @paolosabatino @rbqvq @rpardini @sckiyo
