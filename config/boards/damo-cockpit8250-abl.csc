@@ -1,5 +1,5 @@
 # Qualcomm QCS8250 LPDDR5 UFS USB3 Type-C DP Alt Mode WiFi6 BT5.1 1000BASE-T1 GMSL2
-declare -g BOARD_NAME="DAMO Cockpit8250 ABL"
+declare -g BOARD_NAME="Cockpit8250 ABL"
 declare -g BOARD_VENDOR="alibaba"
 declare -g BOARD_MAINTAINER="retro98boy"
 declare -g INTRODUCED="2025"
