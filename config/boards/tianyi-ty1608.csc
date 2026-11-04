@@ -11,6 +11,7 @@ FULL_DESKTOP="yes"
 SERIALCON="ttyAML0"
 BOOT_LOGO="desktop"
 BOOT_FDT_FILE="amlogic/meson-gxlx2-s905l3-tianyi-ty1608.dtb"
+PACKAGE_LIST_BOARD="alsa-ucm-conf"
 BOOTBRANCH_BOARD="tag:v2026.10"
 BOOTPATCHDIR="v2026.10"
 
