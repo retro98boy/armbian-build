@@ -1,0 +1,84 @@
+From: retro98boy <retro98boy@qq.com>
+Subject: [PATCH] wifi: brcmfmac: support AP6276P BCM43756 B0
+
+Add PCI and firmware mappings for revision 4. Use the vendor RAM base.
+Skip unsupported channel bands for BCM43756 revision 4.
+
+Signed-off-by: retro98boy <retro98boy@qq.com>
+---
+diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/cfg80211.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/cfg80211.c
+--- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/cfg80211.c
++++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/cfg80211.c
+@@ -7038,6 +7038,15 @@
+ 
+ 	for (i = 0; i < total; i++) {
+ 		ch.chspec = (u16)le32_to_cpu(list->element[i]);
++		/* Skip bands unsupported by the current brcmfmac implementation. */
++		if (drvr->bus_if->chip == BRCM_CC_43756_CHIP_ID &&
++		    drvr->bus_if->chiprev == 4 &&
++		    cfg->d11inf.io_type == BRCMU_D11AC_IOTYPE &&
++		    (ch.chspec & BRCMU_CHSPEC_D11AC_BND_MASK) !=
++		    BRCMU_CHSPEC_D11AC_BND_2G &&
++		    (ch.chspec & BRCMU_CHSPEC_D11AC_BND_MASK) !=
++		    BRCMU_CHSPEC_D11AC_BND_5G)
++			continue;
+ 		cfg->d11inf.decchspec(&ch);
+ 
+ 		if (ch.band == BRCMU_CHAN_BAND_2G) {
+diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/chip.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/chip.c
+--- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/chip.c
++++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/chip.c
+@@ -740,6 +740,7 @@
+ 		return 0x160000;
+ 	case BRCM_CC_43751_CHIP_ID:
+ 	case BRCM_CC_43752_CHIP_ID:
++	case BRCM_CC_43756_CHIP_ID:
+ 	case BRCM_CC_4377_CHIP_ID:
+ 		return 0x170000;
+ 	case BRCM_CC_4378_CHIP_ID:
+diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
+--- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
++++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
+@@ -67,6 +67,7 @@
+ BRCMF_FW_DEF(4366C, "brcmfmac4366c-pcie");
+ BRCMF_FW_DEF(4371, "brcmfmac4371-pcie");
+ BRCMF_FW_CLM_DEF(43752, "brcmfmac43752-pcie");
++BRCMF_FW_CLM_DEF(43756, "brcmfmac43756-pcie");
+ BRCMF_FW_CLM_DEF(4377B3, "brcmfmac4377b3-pcie");
+ BRCMF_FW_CLM_DEF(4378B1, "brcmfmac4378b1-pcie");
+ BRCMF_FW_CLM_DEF(4378B3, "brcmfmac4378b3-pcie");
+@@ -108,6 +109,7 @@
+ 	BRCMF_FW_ENTRY(BRCM_CC_43666_CHIP_ID, 0xFFFFFFF0, 4366C),
+ 	BRCMF_FW_ENTRY(BRCM_CC_4371_CHIP_ID, 0xFFFFFFFF, 4371),
+ 	BRCMF_FW_ENTRY(BRCM_CC_43752_CHIP_ID, 0xFFFFFFFF, 43752),
++	BRCMF_FW_ENTRY(BRCM_CC_43756_CHIP_ID, 0x00000010, 43756),
+ 	BRCMF_FW_ENTRY(BRCM_CC_4377_CHIP_ID, 0xFFFFFFFF, 4377B3), /* revision ID 4 */
+ 	BRCMF_FW_ENTRY(BRCM_CC_4378_CHIP_ID, 0x0000000F, 4378B1), /* revision ID 3 */
+ 	BRCMF_FW_ENTRY(BRCM_CC_4378_CHIP_ID, 0xFFFFFFE0, 4378B3), /* revision ID 5 */
+@@ -2761,6 +2763,7 @@
+ 	BRCMF_PCIE_DEVICE(BRCM_PCIE_4378_DEVICE_ID, WCC_SEED),
+ 	BRCMF_PCIE_DEVICE(BRCM_PCIE_4387_DEVICE_ID, WCC_SEED),
+ 	BRCMF_PCIE_DEVICE(BRCM_PCIE_43752_DEVICE_ID, WCC_SEED),
++	BRCMF_PCIE_DEVICE(BRCM_PCIE_43756_DEVICE_ID, WCC_SEED),
+ 	BRCMF_PCIE_DEVICE(CY_PCIE_54591_DEVICE_ID, CYW),
+ 	{ /* end: all zeroes */ }
+ };
+diff --git a/drivers/net/wireless/broadcom/brcm80211/include/brcm_hw_ids.h b/drivers/net/wireless/broadcom/brcm80211/include/brcm_hw_ids.h
+--- a/drivers/net/wireless/broadcom/brcm80211/include/brcm_hw_ids.h
++++ b/drivers/net/wireless/broadcom/brcm80211/include/brcm_hw_ids.h
+@@ -54,6 +54,7 @@
+ #define BRCM_CC_4371_CHIP_ID		0x4371
+ #define BRCM_CC_43751_CHIP_ID		43751
+ #define BRCM_CC_43752_CHIP_ID		43752
++#define BRCM_CC_43756_CHIP_ID		43756
+ #define BRCM_CC_4377_CHIP_ID		0x4377
+ #define BRCM_CC_4378_CHIP_ID		0x4378
+ #define BRCM_CC_4387_CHIP_ID		0x4387
+@@ -96,6 +97,7 @@
+ #define BRCM_PCIE_4371_DEVICE_ID	0x440d
+ #define BRCM_PCIE_43596_DEVICE_ID	0x4415
+ #define BRCM_PCIE_43752_DEVICE_ID	0x449d
++#define BRCM_PCIE_43756_DEVICE_ID	0x44a0
+ #define BRCM_PCIE_4377_DEVICE_ID	0x4488
+ #define BRCM_PCIE_4378_DEVICE_ID	0x4425
+ #define BRCM_PCIE_4387_DEVICE_ID	0x4433
