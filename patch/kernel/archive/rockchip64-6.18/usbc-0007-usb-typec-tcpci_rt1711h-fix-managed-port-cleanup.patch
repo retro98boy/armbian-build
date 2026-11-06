@@ -1,0 +1,90 @@
+From: retro98boy <retro98boy@qq.com>
+Subject: [PATCH] usb: typec: tcpci_rt1711h: Fix managed port cleanup
+
+Release TCPM objects before devres detaches their allocations.
+Mask and release interrupts before unregistering the port.
+Pair IRQ wake enable and disable.
+
+Signed-off-by: retro98boy <retro98boy@qq.com>
+---
+diff --git a/drivers/usb/typec/tcpm/tcpci_rt1711h.c b/drivers/usb/typec/tcpm/tcpci_rt1711h.c
+--- a/drivers/usb/typec/tcpm/tcpci_rt1711h.c
++++ b/drivers/usb/typec/tcpm/tcpci_rt1711h.c
+@@ -71,6 +71,7 @@
+ 	struct regulator *vbus;
+ 	const struct rt1711h_chip_info *info;
+ 	bool src_en;
++	bool irq_wake;
+ };
+ 
+ static int rt1711h_read16(struct rt1711h_chip *chip, unsigned int reg, u16 *val)
+@@ -335,8 +336,6 @@
+ 	return ret;
+ }
+ 
+-static void rt1711h_unregister_tcpci_port(void *tcpci);
+-
+ static int rt1711h_probe(struct i2c_client *client)
+ {
+ 	int ret;
+@@ -388,30 +387,39 @@
+ 	if (IS_ERR_OR_NULL(chip->tcpci))
+ 		return PTR_ERR(chip->tcpci);
+ 
+-	ret = devm_add_action_or_reset(chip->dev, rt1711h_unregister_tcpci_port, chip->tcpci);
+-	if (ret)
+-		return ret;
+-
+ 	ret = devm_request_threaded_irq(chip->dev, client->irq, NULL,
+ 					rt1711h_irq,
+ 					IRQF_ONESHOT | IRQF_TRIGGER_LOW,
+ 					dev_name(chip->dev), chip);
+ 	if (ret < 0)
+-		return ret;
++		goto unregister_port;
+ 
+ 	/* Enable alert interrupts */
+ 	ret = rt1711h_write16(chip, TCPC_ALERT_MASK, alert_mask);
+ 	if (ret < 0)
+-		return ret;
+-
+-	enable_irq_wake(client->irq);
++		goto free_irq;
++
++	chip->irq_wake = !enable_irq_wake(client->irq);
+ 
+ 	return 0;
+-}
+-
+-static void rt1711h_unregister_tcpci_port(void *tcpci)
+-{
+-	tcpci_unregister_port(tcpci);
++
++free_irq:
++	devm_free_irq(chip->dev, client->irq, chip);
++unregister_port:
++	tcpci_unregister_port(chip->tcpci);
++	return ret;
++}
++
++static void rt1711h_remove(struct i2c_client *client)
++{
++	struct rt1711h_chip *chip = i2c_get_clientdata(client);
++
++	rt1711h_write16(chip, TCPC_ALERT_MASK, 0);
++	if (chip->irq_wake)
++		disable_irq_wake(client->irq);
++	devm_free_irq(chip->dev, client->irq, chip);
++	/* Release TCPM objects before devres detaches their allocations. */
++	tcpci_unregister_port(chip->tcpci);
+ }
+ 
+ static const struct rt1711h_chip_info husb311 = {
+@@ -456,6 +464,7 @@
+ 		.of_match_table = rt1711h_of_match,
+ 	},
+ 	.probe = rt1711h_probe,
++	.remove = rt1711h_remove,
+ 	.id_table = rt1711h_id,
+ };
+ module_i2c_driver(rt1711h_i2c_driver);

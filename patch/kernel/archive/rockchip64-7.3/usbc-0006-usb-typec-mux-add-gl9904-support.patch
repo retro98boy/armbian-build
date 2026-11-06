@@ -1,0 +1,326 @@
+From: retro98boy <retro98boy@qq.com>
+Subject: [PATCH] usb: typec: mux: Add GL9904 support
+
+Support USB and DisplayPort routing through GL9904.
+Keep unverified factory settings documented.
+
+Signed-off-by: retro98boy <retro98boy@qq.com>
+---
+ drivers/usb/typec/mux/gl9904.c |  277 ++++++++++++++++++++++++++++++++++++++++
+ drivers/usb/typec/mux/Kconfig  |   10 +
+ drivers/usb/typec/mux/Makefile |    1 
+ 3 files changed, 288 insertions(+)
+
+diff --git a/drivers/usb/typec/mux/gl9904.c b/drivers/usb/typec/mux/gl9904.c
+new file mode 100644
+--- /dev/null
++++ b/drivers/usb/typec/mux/gl9904.c
+@@ -0,0 +1,277 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * GL9904 Type-C redriver.
++ * Mode selection follows PI3DPX1207B DS39965 Rev 4-3, sections 4.8.5 and 6.6.4.
++ * Elo Backpack5 EVT tests support this layout, but not complete register compatibility.
++ *
++ * Indexed access uses address 0x14. The PI manual only describes bulk access.
++ * GL9904 also exposes the tested register bank through bulk address 0x54.
++ * Reads of 0x00..0x02 return 13/11/20, versus PI's 03/11/20.
++ * Reads of 0x09..0x0b and 0x0d..0x1f return ff, unlike PI's mode table.
++ * These are operating-state comparisons, not measured power-on defaults.
++ * Those undocumented registers remain unwritten; ff does not prove absence.
++ *
++ * Documented fields in 0x03..0x08 and 0x0c pass write/readback sweeps.
++ * Mode 6/7 operation is tested with two DP lanes and USB3 in both orientations.
++ * Pin assignment C also passes video tests, but the link still trains two lanes.
++ * Four active DP lanes, receiver-detection semantics, and analog equivalence remain unverified.
++ */
++#include <linux/bitfield.h>
++#include <linux/delay.h>
++#include <linux/gpio/consumer.h>
++#include <linux/i2c.h>
++#include <linux/module.h>
++#include <linux/mutex.h>
++#include <linux/regmap.h>
++#include <linux/usb/typec_dp.h>
++#include <linux/usb/typec_mux.h>
++
++#define GL9904_REG_MODE		0x03
++#define GL9904_MODE_MASK		GENMASK(7, 4)
++#define GL9904_MODE_FLIPPED	BIT(0)
++
++#define GL9904_REG_CHANNELS	0x04
++#define GL9904_REG_RX2		0x05
++#define GL9904_REG_TX2		0x06
++#define GL9904_REG_TX1		0x07
++#define GL9904_REG_RX1		0x08
++#define GL9904_REG_AUX		0x0c
++
++/* PI3DPX1207B sections 4.8.7 through 4.8.10 describe these field positions. */
++#define GL9904_EQ_MASK		GENMASK(7, 4)
++#define GL9904_GAIN_MASK		GENMASK(3, 2)
++#define GL9904_SWING_MASK		GENMASK(1, 0)
++#define GL9904_CHANNEL_DEFAULT	(FIELD_PREP_CONST(GL9904_EQ_MASK, 0) | \
++				 FIELD_PREP_CONST(GL9904_GAIN_MASK, 1) | \
++				 FIELD_PREP_CONST(GL9904_SWING_MASK, 3))
++
++enum gl9904_mode {
++	GL9904_MODE_SAFE = 0,
++	GL9904_MODE_DP = 2,
++	GL9904_MODE_USB = 4,
++	GL9904_MODE_USB_DP = 6,
++};
++
++struct gl9904 {
++	struct device *dev;
++	struct regmap *regmap;
++	struct gpio_desc *enable;
++	struct typec_switch_dev *switch_dev;
++	struct typec_mux_dev *mux_dev;
++	/* Protect connector state and register updates. */
++	struct mutex lock;
++	enum typec_orientation orientation;
++	enum gl9904_mode mode;
++};
++
++static const struct reg_sequence gl9904_settings[] = {
++	/*
++	 * Keep the factory low nibble. Bit 2 differs from the PI reserved default.
++	 * Its GL9904 meaning remains unknown. The high nibble permits all channels.
++	 * Normal-orientation tests identify bits 4/5 as DP and bits 6/7 as USB3.
++	 */
++	{ GL9904_REG_CHANNELS, 0x0b },
++	/*
++	 * Retain factory EQ=0, gain=1, swing=3 codes.
++	 * Register storage is verified; corresponding analog levels are not measured.
++	 */
++	{ GL9904_REG_RX2, GL9904_CHANNEL_DEFAULT },
++	{ GL9904_REG_TX2, GL9904_CHANNEL_DEFAULT },
++	{ GL9904_REG_TX1, GL9904_CHANNEL_DEFAULT },
++	{ GL9904_REG_RX1, GL9904_CHANNEL_DEFAULT },
++	/*
++	 * Retain factory 0x98. PI describes threshold, HPD, AUX, and reserved fields.
++	 * Setting bit 1 does not stop AUX EDID reads on this board.
++	 * Setting bit 2 does not bypass the effect of changing 0x04 bit 1.
++	 * Board wiring or GL9904 semantics can explain these differences.
++	 * Threshold voltages remain unmeasured. Do not use these bits dynamically.
++	 */
++	{ GL9904_REG_AUX, 0x98 },
++};
++
++/* Preserve receiver detection and reserved mode bits. */
++static int gl9904_apply(struct gl9904 *gl, enum typec_orientation orientation,
++			enum gl9904_mode mode)
++{
++	u8 config = GL9904_MODE_SAFE;
++
++	if (orientation != TYPEC_ORIENTATION_NONE && mode != GL9904_MODE_SAFE) {
++		config = mode;
++		if (orientation == TYPEC_ORIENTATION_REVERSE)
++			config |= GL9904_MODE_FLIPPED;
++	}
++
++	return regmap_update_bits(gl->regmap, GL9904_REG_MODE, GL9904_MODE_MASK,
++				  FIELD_PREP(GL9904_MODE_MASK, config));
++}
++
++static int gl9904_orientation_set(struct typec_switch_dev *sw,
++				  enum typec_orientation orientation)
++{
++	struct gl9904 *gl = typec_switch_get_drvdata(sw);
++	int ret;
++
++	mutex_lock(&gl->lock);
++	ret = gl9904_apply(gl, orientation, gl->mode);
++	if (!ret)
++		gl->orientation = orientation;
++	mutex_unlock(&gl->lock);
++
++	return ret;
++}
++
++static int gl9904_mode_set(struct typec_mux_dev *mux,
++			   struct typec_mux_state *state)
++{
++	struct gl9904 *gl = typec_mux_get_drvdata(mux);
++	enum gl9904_mode mode;
++	int ret;
++
++	if (state->mode == TYPEC_STATE_SAFE) {
++		mode = GL9904_MODE_SAFE;
++	} else if (state->mode == TYPEC_STATE_USB) {
++		mode = GL9904_MODE_USB;
++	} else {
++		if (!state->alt || state->alt->svid != USB_TYPEC_DP_SID)
++			return -EOPNOTSUPP;
++
++		switch (state->mode) {
++		case TYPEC_DP_STATE_C:
++		case TYPEC_DP_STATE_E:
++			mode = GL9904_MODE_DP;
++			break;
++		case TYPEC_DP_STATE_D:
++			mode = GL9904_MODE_USB_DP;
++			break;
++		default:
++			return -EOPNOTSUPP;
++		}
++	}
++
++	mutex_lock(&gl->lock);
++	ret = gl9904_apply(gl, gl->orientation, mode);
++	if (!ret)
++		gl->mode = mode;
++	mutex_unlock(&gl->lock);
++
++	return ret;
++}
++
++static void gl9904_disable(struct gl9904 *gl)
++{
++	int ret;
++
++	mutex_lock(&gl->lock);
++	ret = gl9904_apply(gl, TYPEC_ORIENTATION_NONE, GL9904_MODE_SAFE);
++	if (ret)
++		dev_warn(gl->dev, "Cannot select safe mode: %d\n", ret);
++	gpiod_set_value_cansleep(gl->enable, 0);
++	mutex_unlock(&gl->lock);
++}
++
++static bool gl9904_writeable_reg(struct device *dev, unsigned int reg)
++{
++	return (reg >= GL9904_REG_MODE && reg <= GL9904_REG_RX1) ||
++	       reg == GL9904_REG_AUX;
++}
++
++static const struct regmap_config gl9904_regmap_config = {
++	.reg_bits = 8,
++	.val_bits = 8,
++	.max_register = GL9904_REG_AUX,
++	.writeable_reg = gl9904_writeable_reg,
++};
++
++static int gl9904_probe(struct i2c_client *client)
++{
++	struct typec_switch_desc switch_desc = {};
++	struct typec_mux_desc mux_desc = {};
++	struct device *dev = &client->dev;
++	struct gl9904 *gl;
++	int ret;
++
++	gl = devm_kzalloc(dev, sizeof(*gl), GFP_KERNEL);
++	if (!gl)
++		return -ENOMEM;
++	gl->dev = dev;
++	mutex_init(&gl->lock);
++	i2c_set_clientdata(client, gl);
++
++	gl->regmap = devm_regmap_init_i2c(client, &gl9904_regmap_config);
++	if (IS_ERR(gl->regmap))
++		return dev_err_probe(dev, PTR_ERR(gl->regmap), "Cannot create regmap\n");
++
++	gl->enable = devm_gpiod_get(dev, "enable", GPIOD_OUT_HIGH);
++	if (IS_ERR(gl->enable))
++		return dev_err_probe(dev, PTR_ERR(gl->enable), "Cannot enable redriver\n");
++	/* Retain the proven board settling interval; GL9904 timing is undocumented. */
++	msleep(50);
++
++	/* Start disconnected before registering Type-C callbacks. */
++	ret = gl9904_apply(gl, TYPEC_ORIENTATION_NONE, GL9904_MODE_SAFE);
++	if (ret)
++		goto disable;
++	ret = regmap_multi_reg_write(gl->regmap, gl9904_settings,
++				     ARRAY_SIZE(gl9904_settings));
++	if (ret)
++		goto disable;
++
++	switch_desc.fwnode = dev_fwnode(dev);
++	switch_desc.drvdata = gl;
++	switch_desc.set = gl9904_orientation_set;
++	gl->switch_dev = typec_switch_register(dev, &switch_desc);
++	if (IS_ERR(gl->switch_dev)) {
++		ret = PTR_ERR(gl->switch_dev);
++		goto disable;
++	}
++
++	mux_desc.fwnode = dev_fwnode(dev);
++	mux_desc.drvdata = gl;
++	mux_desc.set = gl9904_mode_set;
++	gl->mux_dev = typec_mux_register(dev, &mux_desc);
++	if (IS_ERR(gl->mux_dev)) {
++		ret = PTR_ERR(gl->mux_dev);
++		typec_switch_unregister(gl->switch_dev);
++		goto disable;
++	}
++
++	return 0;
++
++disable:
++	gl9904_disable(gl);
++	return dev_err_probe(dev, ret, "Cannot initialize redriver\n");
++}
++
++static void gl9904_remove(struct i2c_client *client)
++{
++	struct gl9904 *gl = i2c_get_clientdata(client);
++
++	typec_mux_unregister(gl->mux_dev);
++	typec_switch_unregister(gl->switch_dev);
++	gl9904_disable(gl);
++}
++
++static void gl9904_shutdown(struct i2c_client *client)
++{
++	gl9904_disable(i2c_get_clientdata(client));
++}
++
++static const struct of_device_id gl9904_match[] = {
++	{ .compatible = "genesys,gl9904" },
++	{ }
++};
++MODULE_DEVICE_TABLE(of, gl9904_match);
++
++static struct i2c_driver gl9904_driver = {
++	.driver = {
++		.name = "gl9904",
++		.of_match_table = gl9904_match,
++	},
++	.probe = gl9904_probe,
++	.remove = gl9904_remove,
++	.shutdown = gl9904_shutdown,
++};
++module_i2c_driver(gl9904_driver);
++
++MODULE_DESCRIPTION("Genesys Logic GL9904 USB and DisplayPort redriver");
++MODULE_LICENSE("GPL");
+diff --git a/drivers/usb/typec/mux/Kconfig b/drivers/usb/typec/mux/Kconfig
+--- a/drivers/usb/typec/mux/Kconfig
++++ b/drivers/usb/typec/mux/Kconfig
+@@ -11,6 +11,16 @@
+ 	  provides support for muxing analog audio and sideband signals on a
+ 	  common USB Type-C connector.
+ 	  If compiled as a module, the module will be named fsa4480.
++
++config TYPEC_MUX_GL9904
++	tristate "Genesys Logic GL9904 Type-C redriver"
++	depends on I2C && GPIOLIB
++	select REGMAP_I2C
++	help
++	  Support USB and DisplayPort lane switching on the GL9904 redriver.
++	  Configure lane orientation for reversible Type-C connectors.
++	  Support four DisplayPort lanes or two lanes with USB.
++	  The module is named gl9904.
+ 
+ config TYPEC_MUX_GPIO_SBU
+ 	tristate "Generic GPIO based SBU mux for USB Type-C applications"
+diff --git a/drivers/usb/typec/mux/Makefile b/drivers/usb/typec/mux/Makefile
+--- a/drivers/usb/typec/mux/Makefile
++++ b/drivers/usb/typec/mux/Makefile
+@@ -1,6 +1,7 @@
+ # SPDX-License-Identifier: GPL-2.0
+ 
+ obj-$(CONFIG_TYPEC_MUX_FSA4480)		+= fsa4480.o
++obj-$(CONFIG_TYPEC_MUX_GL9904)		+= gl9904.o
+ obj-$(CONFIG_TYPEC_MUX_GPIO_SBU)	+= gpio-sbu-mux.o
+ obj-$(CONFIG_TYPEC_MUX_PI3USB30532)	+= pi3usb30532.o
+ obj-$(CONFIG_TYPEC_MUX_INTEL_PMC)	+= intel_pmc_mux.o

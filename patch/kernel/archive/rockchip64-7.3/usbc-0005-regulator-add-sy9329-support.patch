@@ -1,0 +1,942 @@
+From: retro98boy <retro98boy@qq.com>
+Subject: [PATCH] regulator: Add SY9329 support
+
+Support source and optional reverse regulators, protection settings, and
+ADC monitoring.
+Board constraints limit source voltage. Reverse voltage follows the
+external feedback divider.
+
+Signed-off-by: retro98boy <retro98boy@qq.com>
+---
+ drivers/regulator/sy9329.c |  889 ++++++++++++++++++++++++++++++++++++++++++++
+ drivers/regulator/Kconfig  |   12 +
+ drivers/regulator/Makefile |    1 
+ 3 files changed, 902 insertions(+)
+
+diff --git a/drivers/regulator/sy9329.c b/drivers/regulator/sy9329.c
+new file mode 100644
+--- /dev/null
++++ b/drivers/regulator/sy9329.c
+@@ -0,0 +1,889 @@
++// SPDX-License-Identifier: GPL-2.0-only
++#include <linux/bitfield.h>
++#include <linux/delay.h>
++#include <linux/gpio/consumer.h>
++#include <linux/hwmon.h>
++#include <linux/i2c.h>
++#include <linux/interrupt.h>
++#include <linux/module.h>
++#include <linux/mutex.h>
++#include <linux/property.h>
++#include <linux/regmap.h>
++#include <linux/regulator/driver.h>
++#include <linux/regulator/machine.h>
++#include <linux/regulator/of_regulator.h>
++
++#define SY9329_CTRL1		0x00
++#define SY9329_CTRL2		0x01
++#define SY9329_PROTECT1		0x02
++#define SY9329_PROTECT2		0x03
++#define SY9329_STATUS		0x04
++#define SY9329_FAULTS		0x05
++#define SY9329_ADC_BAT		0x06
++#define SY9329_ADC_VBUS		0x07
++#define SY9329_ADC_CURRENT	0x08
++#define SY9329_ENABLE		BIT(7)
++#define SY9329_LOW_BAT		GENMASK(6, 4)
++#define SY9329_ADC_ON		BIT(3)
++#define SY9329_ADC_MODE		GENMASK(3, 2)
++#define SY9329_DISCHARGE_OFF	BIT(1)
++#define SY9329_FREQUENCY		GENMASK(7, 6)
++#define SY9329_VSEL		GENMASK(5, 0)
++#define SY9329_TRIM		GENMASK(2, 0)
++#define SY9329_ILIM		GENMASK(7, 5)
++#define SY9329_OVP		GENMASK(4, 3)
++#define SY9329_UVP		GENMASK(2, 1)
++#define SY9329_INDUCTOR_ILIM	GENMASK(7, 6)
++#define SY9329_OCP_RETRY		BIT(5)
++#define SY9329_UVP_RETRY		BIT(4)
++#define SY9329_OTP_RETRY		BIT(3)
++#define SY9329_SINK		BIT(2)
++#define SY9329_POWER_GOOD	BIT(7)
++#define SY9329_BAT_LOW		BIT(5)
++#define SY9329_ADC_READY		BIT(7)
++#define SY9329_OCP		(BIT(6) | BIT(5))
++#define SY9329_FAULT_UVP		BIT(4)
++#define SY9329_OTP		BIT(3)
++#define SY9329_FAULT_MASK	GENMASK(6, 3)
++#define SY9329_5V		2
++#define SY9329_SOURCE_ID		0
++#define SY9329_SINK_ID		1
++
++struct sy9329 {
++	struct regmap *regmap;
++	struct gpio_desc *enable_gpio;
++	struct regulator_dev *rdev[2];
++	struct regulator_desc sink_desc;
++	/* Serialize direction changes, ADC conversions, and register fields. */
++	struct mutex lock;
++	unsigned int selector;
++	unsigned int sense_uohm;
++	unsigned int faults;
++	unsigned int pending_faults;
++	int active_id;
++	int ovp_uv;
++	int uvp_uv;
++	bool discharge_off;
++};
++
++/* Voltage codes include three equivalent 5 V ranges. */
++static const struct linear_range sy9329_voltage_ranges[] = {
++	REGULATOR_LINEAR_RANGE(4875000, 0, 7, 62500),
++	REGULATOR_LINEAR_RANGE(4875000, 8, 15, 62500),
++	REGULATOR_LINEAR_RANGE(4875000, 16, 23, 62500),
++	REGULATOR_LINEAR_RANGE(6825000, 24, 31, 87500),
++	REGULATOR_LINEAR_RANGE(8775000, 32, 39, 112500),
++	REGULATOR_LINEAR_RANGE(11700000, 40, 47, 150000),
++	REGULATOR_LINEAR_RANGE(14625000, 48, 55, 187500),
++	REGULATOR_LINEAR_RANGE(19500000, 56, 63, 250000),
++};
++
++static const unsigned int sy9329_frequency[] = { 250000, 500000, 750000, 1000000 };
++static const unsigned int sy9329_inductor_limit[] = { 6000000, 6000000, 8000000, 10000000 };
++static const unsigned int sy9329_sense_limit[] = { 18000, 22000, 27000, 31000,
++					       36000, 45000, 54000, 64000 };
++static const unsigned int sy9329_low_battery[] = { 10200000, 10700000, 11200000, 11700000,
++					       22000000, 22500000, 23000000, 23500000 };
++static const unsigned int sy9329_ovp_percent[] = { 110, 115, 120, 125 };
++static const unsigned int sy9329_uvp_percent[] = { 50, 60, 70, 80 };
++
++static int sy9329_find_value(const unsigned int *values, unsigned int count, unsigned int value)
++{
++	unsigned int i;
++
++	for (i = 0; i < count; i++)
++		if (values[i] == value)
++			return i;
++	return -EINVAL;
++}
++
++/* FAULTS is read-to-clear. ADC polling must preserve regulator fault events. */
++static int sy9329_read_faults(struct sy9329 *sy, unsigned int *value)
++{
++	int ret = regmap_read(sy->regmap, SY9329_FAULTS, value);
++
++	if (!ret) {
++		sy->faults |= *value & SY9329_FAULT_MASK;
++		sy->pending_faults |= *value & SY9329_FAULT_MASK;
++	}
++	return ret;
++}
++
++static void sy9329_notify_faults(struct sy9329 *sy)
++{
++	struct regulator_dev *rdev;
++	unsigned long events = 0;
++	unsigned int faults;
++
++	mutex_lock(&sy->lock);
++	faults = sy->pending_faults;
++	sy->pending_faults = 0;
++	rdev = sy->rdev[sy->active_id == SY9329_SINK_ID ? SY9329_SINK_ID : SY9329_SOURCE_ID];
++	mutex_unlock(&sy->lock);
++	if (!rdev)
++		return;
++	if (faults & SY9329_OCP)
++		events |= REGULATOR_EVENT_OVER_CURRENT;
++	if (faults & SY9329_FAULT_UVP)
++		events |= REGULATOR_EVENT_UNDER_VOLTAGE;
++	if (faults & SY9329_OTP)
++		events |= REGULATOR_EVENT_OVER_TEMP;
++	if (events)
++		regulator_notifier_call_chain(rdev, events, NULL);
++}
++
++/* Caller holds lock. IRQ handling cannot consume ADC_READY during this conversion. */
++static int sy9329_adc_read(struct sy9329 *sy, u8 data[3])
++{
++	unsigned int ctrl, flags;
++	int ret, restore, i;
++
++	ret = regmap_read(sy->regmap, SY9329_CTRL1, &ctrl);
++	if (ret)
++		return ret;
++	/* EVT measurements show no conversions while the regulator is disabled. */
++	if (!(ctrl & SY9329_ENABLE))
++		return -ENODATA;
++	ret = regmap_clear_bits(sy->regmap, SY9329_CTRL1, SY9329_ADC_MODE);
++	if (ret)
++		return ret;
++	ret = sy9329_read_faults(sy, &flags);
++	if (ret)
++		goto restore;
++	ret = regmap_set_bits(sy->regmap, SY9329_CTRL1, SY9329_ADC_ON);
++	if (ret)
++		goto restore;
++
++	/* The datasheet gives no conversion bound. Poll at most 100 times. */
++	for (i = 0; i < 100; i++) {
++		usleep_range(5000, 5500);
++		ret = sy9329_read_faults(sy, &flags);
++		if (ret)
++			goto restore;
++		if (flags & SY9329_ADC_READY) {
++			ret = regmap_bulk_read(sy->regmap, SY9329_ADC_BAT, data, 3);
++			goto restore;
++		}
++	}
++	ret = -ETIMEDOUT;
++restore:
++	restore = regmap_update_bits(sy->regmap, SY9329_CTRL1, SY9329_ADC_MODE,
++				     ctrl & SY9329_ADC_MODE);
++	return ret ?: restore;
++}
++
++static int sy9329_voltage_code(int voltage, int limit, const unsigned int *percent)
++{
++	int i;
++
++	for (i = 0; i < 4; i++)
++		if (DIV_ROUND_CLOSEST(voltage * percent[i], 100) == limit)
++			return i;
++	return -EINVAL;
++}
++
++static int sy9329_voltage_protection(struct sy9329 *sy, int voltage, unsigned int *mask,
++				     unsigned int *value)
++{
++	int code;
++
++	*mask = 0;
++	*value = 0;
++	if (sy->ovp_uv) {
++		code = sy9329_voltage_code(voltage, sy->ovp_uv, sy9329_ovp_percent);
++		if (code < 0)
++			return code;
++		*mask |= SY9329_OVP;
++		*value |= FIELD_PREP(SY9329_OVP, code);
++	}
++	if (sy->uvp_uv) {
++		code = sy9329_voltage_code(voltage, sy->uvp_uv, sy9329_uvp_percent);
++		if (code < 0)
++			return code;
++		*mask |= SY9329_UVP;
++		*value |= FIELD_PREP(SY9329_UVP, code);
++	}
++	return 0;
++}
++
++static int sy9329_get_voltage_sel(struct regulator_dev *rdev)
++{
++	struct sy9329 *sy = rdev_get_drvdata(rdev);
++	unsigned int ctrl, mode, sel;
++	int ret;
++
++	guard(mutex)(&sy->lock);
++	ret = regmap_read(sy->regmap, SY9329_CTRL1, &ctrl);
++	if (!ret)
++		ret = regmap_read(sy->regmap, SY9329_PROTECT2, &mode);
++	if (ret)
++		return ret;
++	if (!(ctrl & SY9329_ENABLE) || (mode & SY9329_SINK))
++		return sy->selector;
++	ret = regmap_read(sy->regmap, SY9329_CTRL2, &sel);
++	return ret ?: sel & SY9329_VSEL;
++}
++
++static int sy9329_set_voltage_sel(struct regulator_dev *rdev, unsigned int sel)
++{
++	struct sy9329 *sy = rdev_get_drvdata(rdev);
++	unsigned int ctrl, mode, mask, value;
++	int ret, voltage;
++
++	if (sel >= 64)
++		return -EINVAL;
++	voltage = regulator_list_voltage_linear_range(rdev, sel);
++	guard(mutex)(&sy->lock);
++	ret = sy9329_voltage_protection(sy, voltage, &mask, &value);
++	if (ret)
++		return ret;
++	ret = regmap_read(sy->regmap, SY9329_CTRL1, &ctrl);
++	if (!ret)
++		ret = regmap_read(sy->regmap, SY9329_PROTECT2, &mode);
++	if (ret)
++		return ret;
++	/* Cache source settings while the reverse converter owns the hardware. */
++	if ((ctrl & SY9329_ENABLE) && (mode & SY9329_SINK)) {
++		sy->selector = sel;
++		return 0;
++	}
++	if (mask) {
++		ret = regmap_update_bits(sy->regmap, SY9329_PROTECT1, mask, value);
++		if (ret)
++			return ret;
++	}
++	/* The chip resets the base voltage field while disabled. */
++	if (ctrl & SY9329_ENABLE) {
++		ret = regulator_set_voltage_sel_regmap(rdev, sel);
++		if (ret)
++			return ret;
++	}
++	sy->selector = sel;
++	return 0;
++}
++
++static int sy9329_enable(struct regulator_dev *rdev)
++{
++	struct sy9329 *sy = rdev_get_drvdata(rdev);
++	int id = rdev_get_id(rdev);
++	unsigned int ctrl, mode;
++	int ret;
++
++	mutex_lock(&sy->lock);
++	if (sy->active_id >= 0 && sy->active_id != id) {
++		ret = -EBUSY;
++		goto out;
++	}
++	ret = regmap_read(sy->regmap, SY9329_CTRL1, &ctrl);
++	if (!ret)
++		ret = regmap_read(sy->regmap, SY9329_PROTECT2, &mode);
++	if (ret)
++		goto out;
++	if (ctrl & SY9329_ENABLE) {
++		ret = !!(mode & SY9329_SINK) == id ? 0 : -EBUSY;
++		if (!ret)
++			sy->active_id = id;
++		goto out;
++	}
++	/* The sink consumer must establish VBUS before enabling reverse conversion. */
++	ret = regmap_update_bits(sy->regmap, SY9329_CTRL1, SY9329_DISCHARGE_OFF,
++				 id == SY9329_SINK_ID || sy->discharge_off ?
++				 SY9329_DISCHARGE_OFF : 0);
++	if (ret)
++		goto out;
++	/* Both direction and base voltage reset while disabled. Start from 5 V. */
++	ret = regmap_update_bits(sy->regmap, SY9329_CTRL2, SY9329_TRIM,
++				 id == SY9329_SINK_ID ? SY9329_5V : sy->selector & SY9329_TRIM);
++	if (ret)
++		goto out;
++	ret = regmap_set_bits(sy->regmap, SY9329_CTRL1, SY9329_ENABLE);
++	if (ret)
++		goto disable;
++	if (id == SY9329_SINK_ID)
++		ret = regmap_set_bits(sy->regmap, SY9329_PROTECT2, SY9329_SINK);
++	else
++		ret = regulator_set_voltage_sel_regmap(rdev, sy->selector);
++	if (ret)
++		goto disable;
++	sy->active_id = id;
++	sy->faults = 0;
++	goto out;
++disable:
++	regmap_clear_bits(sy->regmap, SY9329_CTRL1, SY9329_ENABLE);
++out:
++	mutex_unlock(&sy->lock);
++	sy9329_notify_faults(sy);
++	return ret;
++}
++
++static int sy9329_disable(struct regulator_dev *rdev)
++{
++	struct sy9329 *sy = rdev_get_drvdata(rdev);
++	int ret;
++
++	guard(mutex)(&sy->lock);
++	if (sy->active_id >= 0 && sy->active_id != rdev_get_id(rdev))
++		return -EBUSY;
++	ret = regmap_clear_bits(sy->regmap, SY9329_CTRL1, SY9329_ENABLE);
++	if (!ret)
++		sy->active_id = -1;
++	return ret;
++}
++
++static int sy9329_is_enabled(struct regulator_dev *rdev)
++{
++	struct sy9329 *sy = rdev_get_drvdata(rdev);
++	unsigned int ctrl, mode;
++	int ret;
++
++	guard(mutex)(&sy->lock);
++	ret = regmap_read(sy->regmap, SY9329_CTRL1, &ctrl);
++	if (!ret)
++		ret = regmap_read(sy->regmap, SY9329_PROTECT2, &mode);
++	if (ret)
++		return ret;
++	return (ctrl & SY9329_ENABLE) && !!(mode & SY9329_SINK) == rdev_get_id(rdev);
++}
++
++static int sy9329_get_status(struct regulator_dev *rdev)
++{
++	unsigned int val;
++	int ret = sy9329_is_enabled(rdev);
++
++	if (ret <= 0)
++		return ret ? ret : REGULATOR_STATUS_OFF;
++	ret = regmap_read(rdev->regmap, SY9329_STATUS, &val);
++	if (ret)
++		return ret;
++	return val & SY9329_POWER_GOOD ? REGULATOR_STATUS_ON : REGULATOR_STATUS_ERROR;
++}
++
++static int sy9329_set_discharge(struct regulator_dev *rdev, bool enable)
++{
++	struct sy9329 *sy = rdev_get_drvdata(rdev);
++	int ret = 0;
++
++	guard(mutex)(&sy->lock);
++	if (sy->active_id != SY9329_SINK_ID)
++		ret = regmap_update_bits(sy->regmap, SY9329_CTRL1, SY9329_DISCHARGE_OFF,
++					 enable ? 0 : SY9329_DISCHARGE_OFF);
++	if (!ret)
++		sy->discharge_off = !enable;
++	return ret;
++}
++
++static int sy9329_current_limit(struct sy9329 *sy, unsigned int code)
++{
++	/* The configured resistance includes the typical 1.65 mOhm pin resistance. */
++	return DIV_ROUND_CLOSEST_ULL((u64)sy9329_sense_limit[code] * 1000000, sy->sense_uohm);
++}
++
++static int sy9329_set_current_limit(struct regulator_dev *rdev, int min_uA, int max_uA)
++{
++	struct sy9329 *sy = rdev_get_drvdata(rdev);
++	int i, limit;
++
++	if (!sy->sense_uohm)
++		return -EOPNOTSUPP;
++	if (min_uA < 0 || max_uA < min_uA)
++		return -EINVAL;
++	for (i = ARRAY_SIZE(sy9329_sense_limit) - 1; i >= 0; i--) {
++		limit = sy9329_current_limit(sy, i);
++		if (limit >= min_uA && limit <= max_uA) {
++			guard(mutex)(&sy->lock);
++			return regmap_update_bits(sy->regmap, SY9329_PROTECT1, SY9329_ILIM,
++						  FIELD_PREP(SY9329_ILIM, i));
++		}
++	}
++	return -EINVAL;
++}
++
++static int sy9329_get_current_limit(struct regulator_dev *rdev)
++{
++	struct sy9329 *sy = rdev_get_drvdata(rdev);
++	unsigned int val;
++	int ret;
++
++	if (!sy->sense_uohm)
++		return -EOPNOTSUPP;
++	ret = regmap_read(sy->regmap, SY9329_PROTECT1, &val);
++	return ret ?: sy9329_current_limit(sy, FIELD_GET(SY9329_ILIM, val));
++}
++
++static int sy9329_set_voltage_limit(struct regulator_dev *rdev, int limit, int severity,
++				    bool enable, bool over)
++{
++	struct sy9329 *sy = rdev_get_drvdata(rdev);
++	unsigned int mask = over ? SY9329_OVP : SY9329_UVP;
++	int voltage, code, ret;
++
++	if (!enable || severity != REGULATOR_SEVERITY_PROT)
++		return -EINVAL;
++	if (!limit)
++		return 0;
++	guard(mutex)(&sy->lock);
++	voltage = regulator_list_voltage_linear_range(rdev, sy->selector);
++	code = sy9329_voltage_code(voltage, limit, over ? sy9329_ovp_percent : sy9329_uvp_percent);
++	if (code < 0)
++		return code;
++	ret = regmap_update_bits(sy->regmap, SY9329_PROTECT1, mask, code << __ffs(mask));
++	if (!ret) {
++		if (over)
++			sy->ovp_uv = limit;
++		else
++			sy->uvp_uv = limit;
++	}
++	return ret;
++}
++
++static int sy9329_set_ovp(struct regulator_dev *rdev, int limit, int severity, bool enable)
++{
++	return sy9329_set_voltage_limit(rdev, limit, severity, enable, true);
++}
++
++static int sy9329_set_uvp(struct regulator_dev *rdev, int limit, int severity, bool enable)
++{
++	return sy9329_set_voltage_limit(rdev, limit, severity, enable, false);
++}
++
++static int sy9329_set_otp(struct regulator_dev *rdev, int limit, int severity, bool enable)
++{
++	/* The regulator API uses kelvin. Hardware shutdown is fixed at 150 C. */
++	return enable && severity == REGULATOR_SEVERITY_PROT &&
++	       (!limit || limit == 423) ? 0 : -EINVAL;
++}
++
++static int sy9329_get_error_flags(struct regulator_dev *rdev, unsigned int *flags)
++{
++	struct sy9329 *sy = rdev_get_drvdata(rdev);
++	unsigned int val;
++	int ret;
++
++	mutex_lock(&sy->lock);
++	ret = sy9329_read_faults(sy, &val);
++	*flags = 0;
++	if (sy->faults & SY9329_OCP)
++		*flags |= REGULATOR_ERROR_OVER_CURRENT;
++	if (sy->faults & SY9329_FAULT_UVP)
++		*flags |= REGULATOR_ERROR_UNDER_VOLTAGE;
++	if (sy->faults & SY9329_OTP)
++		*flags |= REGULATOR_ERROR_OVER_TEMP;
++	mutex_unlock(&sy->lock);
++	sy9329_notify_faults(sy);
++	return ret;
++}
++
++static const struct regulator_ops sy9329_source_ops = {
++	.list_voltage = regulator_list_voltage_linear_range,
++	.map_voltage = regulator_map_voltage_linear_range,
++	.get_voltage_sel = sy9329_get_voltage_sel,
++	.set_voltage_sel = sy9329_set_voltage_sel,
++	.set_current_limit = sy9329_set_current_limit,
++	.get_current_limit = sy9329_get_current_limit,
++	.set_over_voltage_protection = sy9329_set_ovp,
++	.set_under_voltage_protection = sy9329_set_uvp,
++	.set_thermal_protection = sy9329_set_otp,
++	.enable = sy9329_enable,
++	.disable = sy9329_disable,
++	.is_enabled = sy9329_is_enabled,
++	.get_status = sy9329_get_status,
++	.get_error_flags = sy9329_get_error_flags,
++	.set_active_discharge = sy9329_set_discharge,
++};
++
++static const struct regulator_ops sy9329_sink_ops = {
++	.list_voltage = regulator_list_voltage_linear,
++	.enable = sy9329_enable,
++	.disable = sy9329_disable,
++	.is_enabled = sy9329_is_enabled,
++	.get_status = sy9329_get_status,
++	.get_error_flags = sy9329_get_error_flags,
++	.set_thermal_protection = sy9329_set_otp,
++};
++
++static const struct regulator_desc sy9329_desc = {
++	.name = "sy9329-vbus",
++	.supply_name = "vin",
++	.id = SY9329_SOURCE_ID,
++	.owner = THIS_MODULE,
++	.type = REGULATOR_VOLTAGE,
++	.ops = &sy9329_source_ops,
++	.n_voltages = 64,
++	.linear_ranges = sy9329_voltage_ranges,
++	.n_linear_ranges = ARRAY_SIZE(sy9329_voltage_ranges),
++	.vsel_reg = SY9329_CTRL2,
++	.vsel_mask = SY9329_VSEL,
++	.enable_time = 10000,
++};
++
++static int sy9329_hwmon_read(struct device *dev, enum hwmon_sensor_types type,
++			     u32 attr, int channel, long *val)
++{
++	struct sy9329 *sy = dev_get_drvdata(dev);
++	unsigned int reg = 0, code;
++	u8 adc[3];
++	int ret = 0, voltage;
++
++	mutex_lock(&sy->lock);
++	if (type == hwmon_curr && attr == hwmon_curr_input &&
++	    sy->active_id == SY9329_SINK_ID) {
++		ret = -ENODATA;
++		goto out;
++	}
++	if ((type == hwmon_in && attr == hwmon_in_input) ||
++	    (type == hwmon_curr && attr == hwmon_curr_input)) {
++		ret = sy9329_adc_read(sy, adc);
++		if (ret)
++			goto out;
++		if (type == hwmon_in)
++			*val = DIV_ROUND_CLOSEST(adc[channel] * (channel == 2 ? 67 : 25000), 255);
++		else
++			*val = DIV_ROUND_CLOSEST_ULL((u64)adc[2] * 67000 * 1000,
++						     (u64)255 * sy->sense_uohm);
++		goto out;
++	}
++	if (type == hwmon_in && channel == 0) {
++		if (attr == hwmon_in_min_alarm) {
++			ret = regmap_read(sy->regmap, SY9329_STATUS, &reg);
++			*val = !!(reg & SY9329_BAT_LOW);
++		} else {
++			ret = regmap_read(sy->regmap, SY9329_CTRL1, &reg);
++			*val = sy9329_low_battery[FIELD_GET(SY9329_LOW_BAT, reg)] / 1000;
++		}
++	} else if (type == hwmon_in && channel == 1) {
++		ret = regmap_read(sy->regmap, SY9329_CTRL2, &reg);
++		if (ret)
++			goto out;
++		code = reg & SY9329_VSEL;
++		voltage = regulator_list_voltage_linear_range(sy->rdev[0], code);
++		ret = regmap_read(sy->regmap, SY9329_PROTECT1, &reg);
++		if (attr == hwmon_in_crit)
++			code = sy9329_ovp_percent[FIELD_GET(SY9329_OVP, reg)];
++		else
++			code = sy9329_uvp_percent[FIELD_GET(SY9329_UVP, reg)];
++		*val = DIV_ROUND_CLOSEST(voltage * code, 100000);
++	} else if (type == hwmon_curr && channel == 1) {
++		ret = regmap_read(sy->regmap, SY9329_PROTECT2, &reg);
++		*val = sy9329_inductor_limit[FIELD_GET(SY9329_INDUCTOR_ILIM, reg)] / 1000;
++	} else {
++		ret = regmap_read(sy->regmap, SY9329_PROTECT1, &reg);
++		code = FIELD_GET(SY9329_ILIM, reg);
++		if (type == hwmon_in)
++			*val = sy9329_sense_limit[code] / 1000;
++		else
++			*val = DIV_ROUND_CLOSEST(sy9329_current_limit(sy, code), 1000);
++	}
++out:
++	mutex_unlock(&sy->lock);
++	sy9329_notify_faults(sy);
++	return ret;
++}
++
++static int sy9329_hwmon_read_string(struct device *dev, enum hwmon_sensor_types type,
++				    u32 attr, int channel, const char **str)
++{
++	static const char * const voltage_labels[] = { "BAT", "VBUS", "VSENSE" };
++	static const char * const current_labels[] = { "VBUS", "Inductor" };
++
++	*str = type == hwmon_in ? voltage_labels[channel] : current_labels[channel];
++	return 0;
++}
++
++static umode_t sy9329_hwmon_visible(const void *data, enum hwmon_sensor_types type,
++				    u32 attr, int channel)
++{
++	const struct sy9329 *sy = data;
++
++	if (type == hwmon_curr && channel == 0 && !sy->sense_uohm)
++		return 0;
++	return 0444;
++}
++
++static const struct hwmon_ops sy9329_hwmon_ops = {
++	.is_visible = sy9329_hwmon_visible,
++	.read = sy9329_hwmon_read,
++	.read_string = sy9329_hwmon_read_string,
++};
++
++static const struct hwmon_channel_info * const sy9329_hwmon_info[] = {
++	HWMON_CHANNEL_INFO(in,
++			   HWMON_I_INPUT | HWMON_I_LABEL | HWMON_I_MIN | HWMON_I_MIN_ALARM,
++			   HWMON_I_INPUT | HWMON_I_LABEL | HWMON_I_LCRIT | HWMON_I_CRIT,
++			   HWMON_I_INPUT | HWMON_I_LABEL | HWMON_I_MAX),
++	HWMON_CHANNEL_INFO(curr, HWMON_C_INPUT | HWMON_C_LABEL | HWMON_C_MAX,
++			   HWMON_C_LABEL | HWMON_C_CRIT),
++	NULL,
++};
++
++static const struct hwmon_chip_info sy9329_hwmon_chip = {
++	.ops = &sy9329_hwmon_ops,
++	.info = sy9329_hwmon_info,
++};
++
++struct sy9329_setting {
++	const char *property;
++	unsigned int reg;
++	unsigned int mask;
++	const unsigned int *values;
++	unsigned int count;
++};
++
++#define SY9329_SETTING(_name, _reg, _mask, _values) \
++	{ "silergy," _name, _reg, _mask, _values, ARRAY_SIZE(_values) }
++
++static const struct sy9329_setting sy9329_settings[] = {
++	SY9329_SETTING("switching-frequency-hz", SY9329_CTRL2, SY9329_FREQUENCY, sy9329_frequency),
++	SY9329_SETTING("inductor-current-limit-microamp", SY9329_PROTECT2,
++		       SY9329_INDUCTOR_ILIM, sy9329_inductor_limit),
++	SY9329_SETTING("output-current-limit-microvolt", SY9329_PROTECT1,
++		       SY9329_ILIM, sy9329_sense_limit),
++	SY9329_SETTING("low-battery-microvolt", SY9329_CTRL1, SY9329_LOW_BAT, sy9329_low_battery),
++	SY9329_SETTING("overvoltage-percent", SY9329_PROTECT1, SY9329_OVP, sy9329_ovp_percent),
++	SY9329_SETTING("undervoltage-percent", SY9329_PROTECT1, SY9329_UVP, sy9329_uvp_percent),
++};
++
++static int sy9329_configure(struct device *dev, struct sy9329 *sy)
++{
++	static const struct {
++		const char *property;
++		unsigned int mask;
++	} recovery[] = {
++		{ "silergy,inductor-ocp-recovery", SY9329_OCP_RETRY },
++		{ "silergy,uvp-recovery", SY9329_UVP_RETRY },
++		{ "silergy,otp-recovery", SY9329_OTP_RETRY },
++	};
++	const struct sy9329_setting *setting;
++	unsigned int resistance, trace = 0, value;
++	const char *policy;
++	int i, code, ret;
++
++	if (device_property_present(dev, "shunt-resistor-micro-ohms")) {
++		ret = device_property_read_u32(dev, "shunt-resistor-micro-ohms", &resistance);
++		if (ret)
++			return ret;
++		if (device_property_present(dev, "silergy,trace-resistance-micro-ohms")) {
++			ret = device_property_read_u32(dev, "silergy,trace-resistance-micro-ohms",
++						       &trace);
++			if (ret)
++				return ret;
++		}
++		if (!resistance || resistance > 1000000 || trace > 1000000)
++			return -EINVAL;
++		sy->sense_uohm = resistance + trace + 1650;
++	}
++	for (i = 0; i < ARRAY_SIZE(sy9329_settings); i++) {
++		setting = &sy9329_settings[i];
++		if (!device_property_present(dev, setting->property))
++			continue;
++		ret = device_property_read_u32(dev, setting->property, &value);
++		if (ret)
++			return ret;
++		code = sy9329_find_value(setting->values, setting->count, value);
++		if (code < 0)
++			return dev_err_probe(dev, code, "Invalid %s\n", setting->property);
++		ret = regmap_update_bits(sy->regmap, setting->reg, setting->mask,
++					 code << __ffs(setting->mask));
++		if (ret)
++			return ret;
++	}
++	for (i = 0; i < ARRAY_SIZE(recovery); i++) {
++		if (!device_property_present(dev, recovery[i].property))
++			continue;
++		ret = device_property_read_string(dev, recovery[i].property, &policy);
++		if (ret)
++			return ret;
++		if (!strcmp(policy, "latch-off"))
++			value = 0;
++		else if (!strcmp(policy, "auto-retry"))
++			value = recovery[i].mask;
++		else
++			return dev_err_probe(dev, -EINVAL, "Invalid %s\n", recovery[i].property);
++		ret = regmap_update_bits(sy->regmap, SY9329_PROTECT2, recovery[i].mask, value);
++		if (ret)
++			return ret;
++	}
++	return 0;
++}
++
++static bool sy9329_writeable_reg(struct device *dev, unsigned int reg)
++{
++	return reg <= SY9329_PROTECT2;
++}
++
++static bool sy9329_precious_reg(struct device *dev, unsigned int reg)
++{
++	return reg == SY9329_FAULTS;
++}
++
++static const struct regmap_config sy9329_regmap = {
++	.reg_bits = 8,
++	.val_bits = 8,
++	.max_register = SY9329_ADC_CURRENT,
++	.writeable_reg = sy9329_writeable_reg,
++	.precious_reg = sy9329_precious_reg,
++};
++
++static irqreturn_t sy9329_irq(int irq, void *data)
++{
++	struct sy9329 *sy = data;
++	unsigned int faults;
++	int ret;
++
++	mutex_lock(&sy->lock);
++	ret = sy9329_read_faults(sy, &faults);
++	mutex_unlock(&sy->lock);
++	if (ret) {
++		/* The level interrupt cannot clear without a successful I2C read. */
++		disable_irq_nosync(irq);
++		dev_err(rdev_get_dev(sy->rdev[0]), "Cannot clear fault interrupt: %d\n", ret);
++		return IRQ_HANDLED;
++	}
++	sy9329_notify_faults(sy);
++	return IRQ_HANDLED;
++}
++
++static void sy9329_power_off(void *data)
++{
++	struct sy9329 *sy = data;
++
++	mutex_lock(&sy->lock);
++	/* Never discharge an external supply after reverse conversion. */
++	if (sy->active_id == SY9329_SINK_ID)
++		regmap_set_bits(sy->regmap, SY9329_CTRL1, SY9329_DISCHARGE_OFF);
++	regmap_clear_bits(sy->regmap, SY9329_CTRL1, SY9329_ENABLE | SY9329_ADC_MODE);
++	sy->active_id = -1;
++	msleep(50);
++	gpiod_set_value_cansleep(sy->enable_gpio, 0);
++	mutex_unlock(&sy->lock);
++}
++
++static int sy9329_register_sink(struct device *dev, struct sy9329 *sy, struct device_node *node)
++{
++	struct regulator_config config = { .dev = dev, .of_node = node,
++					   .regmap = sy->regmap, .driver_data = sy };
++	const struct regulation_constraints *constraints;
++
++	sy->sink_desc = (struct regulator_desc) {
++		.name = "sy9329-bat",
++		.supply_name = "vbus-in",
++		.id = SY9329_SINK_ID,
++		.owner = THIS_MODULE,
++		.type = REGULATOR_VOLTAGE,
++		.ops = &sy9329_sink_ops,
++		.enable_time = 10000,
++	};
++	config.init_data = of_get_regulator_init_data(dev, node, &sy->sink_desc);
++	if (!config.init_data)
++		return -EINVAL;
++	constraints = &config.init_data->constraints;
++	/* Omit voltage constraints when the board feedback divider is unknown. */
++	if (constraints->min_uV || constraints->max_uV) {
++		if (constraints->min_uV != constraints->max_uV ||
++		    constraints->min_uV < 4000000 || constraints->min_uV > 28000000)
++			return dev_err_probe(dev, -EINVAL, "Specify the fixed sink BAT voltage\n");
++		sy->sink_desc.fixed_uV = constraints->min_uV;
++		sy->sink_desc.n_voltages = 1;
++	}
++	sy->rdev[1] = devm_regulator_register(dev, &sy->sink_desc, &config);
++	return PTR_ERR_OR_ZERO(sy->rdev[1]);
++}
++
++static int sy9329_probe(struct i2c_client *client)
++{
++	struct device *dev = &client->dev;
++	struct regulator_config config = { .dev = dev, .of_node = dev->of_node };
++	struct device_node *sink;
++	struct device *hwmon;
++	struct sy9329 *sy;
++	unsigned int ctrl, voltage, mode;
++	int ret;
++
++	sy = devm_kzalloc(dev, sizeof(*sy), GFP_KERNEL);
++	if (!sy)
++		return -ENOMEM;
++	mutex_init(&sy->lock);
++	sy->active_id = -1;
++	sy->regmap = devm_regmap_init_i2c(client, &sy9329_regmap);
++	if (IS_ERR(sy->regmap))
++		return dev_err_probe(dev, PTR_ERR(sy->regmap), "Cannot create regmap\n");
++	sy->enable_gpio = devm_gpiod_get_optional(dev, "enable", GPIOD_OUT_HIGH);
++	if (IS_ERR(sy->enable_gpio))
++		return dev_err_probe(dev, PTR_ERR(sy->enable_gpio), "Cannot enable interface\n");
++	usleep_range(1000, 2000);
++	ret = regmap_read(sy->regmap, SY9329_CTRL1, &ctrl);
++	if (!ret)
++		ret = regmap_read(sy->regmap, SY9329_CTRL2, &voltage);
++	if (!ret)
++		ret = regmap_read(sy->regmap, SY9329_PROTECT2, &mode);
++	if (ret) {
++		gpiod_set_value_cansleep(sy->enable_gpio, 0);
++		return ret;
++	}
++	sy->selector = ctrl & SY9329_ENABLE && !(mode & SY9329_SINK) ?
++		       voltage & SY9329_VSEL : SY9329_5V;
++	sy->discharge_off = ctrl & SY9329_DISCHARGE_OFF;
++	if (ctrl & SY9329_ENABLE)
++		sy->active_id = !!(mode & SY9329_SINK);
++	ret = devm_add_action_or_reset(dev, sy9329_power_off, sy);
++	if (ret)
++		return ret;
++	sink = of_get_available_child_by_name(dev->of_node, "sink");
++	if (sy->active_id == SY9329_SINK_ID && !sink)
++		return dev_err_probe(dev, -EBUSY, "Active sink lacks regulator configuration\n");
++	ret = sy9329_configure(dev, sy);
++	if (ret)
++		goto put_sink;
++	config.regmap = sy->regmap;
++	config.driver_data = sy;
++	config.init_data = of_get_regulator_init_data(dev, dev->of_node, &sy9329_desc);
++	if (!config.init_data) {
++		ret = -EINVAL;
++		goto put_sink;
++	}
++	sy->rdev[0] = devm_regulator_register(dev, &sy9329_desc, &config);
++	if (IS_ERR(sy->rdev[0])) {
++		ret = PTR_ERR(sy->rdev[0]);
++		goto put_sink;
++	}
++	if (sink) {
++		ret = sy9329_register_sink(dev, sy, sink);
++		if (ret)
++			goto put_sink;
++	}
++	of_node_put(sink);
++	i2c_set_clientdata(client, sy);
++	hwmon = devm_hwmon_device_register_with_info(dev, "sy9329", sy, &sy9329_hwmon_chip, NULL);
++	if (IS_ERR(hwmon))
++		return dev_err_probe(dev, PTR_ERR(hwmon), "Cannot register hwmon\n");
++	if (client->irq)
++		return devm_request_threaded_irq(dev, client->irq, NULL, sy9329_irq,
++						 IRQF_ONESHOT, dev_name(dev), sy);
++	return 0;
++put_sink:
++	of_node_put(sink);
++	return ret;
++}
++
++static void sy9329_shutdown(struct i2c_client *client)
++{
++	sy9329_power_off(i2c_get_clientdata(client));
++}
++
++static const struct of_device_id sy9329_of_match[] = {
++	{ .compatible = "silergy,sy9329" },
++	{ }
++};
++MODULE_DEVICE_TABLE(of, sy9329_of_match);
++
++static struct i2c_driver sy9329_driver = {
++	.driver = {
++		.name = "sy9329",
++		.of_match_table = sy9329_of_match,
++	},
++	.probe = sy9329_probe,
++	.shutdown = sy9329_shutdown,
++};
++module_i2c_driver(sy9329_driver);
++
++MODULE_DESCRIPTION("Silergy SY9329 bidirectional regulator and monitor");
++MODULE_LICENSE("GPL");
+diff --git a/drivers/regulator/Kconfig b/drivers/regulator/Kconfig
+--- a/drivers/regulator/Kconfig
++++ b/drivers/regulator/Kconfig
+@@ -1637,6 +1637,18 @@
+ 	select REGMAP_I2C
+ 	help
+ 	  This driver supports SY8827N single output regulator.
++
++config REGULATOR_SY9329
++	tristate "Silergy SY9329 bidirectional regulator"
++	depends on HWMON
++	depends on I2C && OF
++	select REGMAP_I2C
++	help
++	  Support programmable VBUS output and optional reverse conversion.
++	  Select 5, 7, 9, 12, 15, or 20 V with additional voltage adjustment.
++	  Provide protection settings and ADC monitoring through hwmon.
++	  Board regulator constraints restrict the available output range.
++	  The module is named sy9329.
+ 
+ config REGULATOR_TPS51632
+ 	tristate "TI TPS51632 Power Regulator"
+diff --git a/drivers/regulator/Makefile b/drivers/regulator/Makefile
+--- a/drivers/regulator/Makefile
++++ b/drivers/regulator/Makefile
+@@ -187,6 +187,7 @@
+ obj-$(CONFIG_REGULATOR_SY8106A) += sy8106a-regulator.o
+ obj-$(CONFIG_REGULATOR_SY8824X) += sy8824x.o
+ obj-$(CONFIG_REGULATOR_SY8827N) += sy8827n.o
++obj-$(CONFIG_REGULATOR_SY9329) += sy9329.o
+ obj-$(CONFIG_REGULATOR_TI_ABB) += ti-abb-regulator.o
+ obj-$(CONFIG_REGULATOR_TPS6105X) += tps6105x-regulator.o
+ obj-$(CONFIG_REGULATOR_TPS62360) += tps62360-regulator.o

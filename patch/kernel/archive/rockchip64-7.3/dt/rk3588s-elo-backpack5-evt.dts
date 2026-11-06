@@ -5,7 +5,12 @@
 
 /dts-v1/;
 
+#define ELO_TYPEC_NODE usb-typec@4e
 #include "rk3588s-elo-backpack5.dts"
+
+/ {
+	model = "Elo Backpack5 EVT";
+};
 
 &usbc0 {
 	compatible = "hynetek,husb311";

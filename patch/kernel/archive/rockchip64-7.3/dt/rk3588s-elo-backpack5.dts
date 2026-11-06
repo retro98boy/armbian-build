@@ -16,6 +16,10 @@
 
 #define GPIO_I2C_BASED_DDC
 
+#ifndef ELO_TYPEC_NODE
+#define ELO_TYPEC_NODE usb-typec@22
+#endif
+
 / {
 	model = "Elo Backpack5";
 	compatible = "elo,backpack5", "rockchip,rk3588s";
@@ -174,11 +178,6 @@
 		vin-supply = <&vcc_sysin>;
 	};
 
-	vbus_typec: regulator-vbus-typec {
-		compatible = "regulator-fixed";
-		regulator-name = "vbus_typec";
-	};
-
 	vcc_1v1_nldo_s3: regulator-vcc-1v1-nldo-s3 {
 		compatible = "regulator-fixed";
 		regulator-name = "vcc_1v1_nldo_s3";
@@ -237,6 +236,16 @@
 
 &cpu_l3 {
 	cpu-supply = <&vdd_cpu_lit_s0>;
+};
+
+&dp0 {
+	status = "okay";
+};
+
+&dp0_in {
+	dp0_in_vp2: endpoint {
+		remote-endpoint = <&vp2_out_dp0>;
+	};
 };
 
 &gmac1 {
@@ -355,6 +364,37 @@
 	pinctrl-0 = <&i2c3m2_xfer>;
 	status = "okay";
 
+	gl9904: typec-mux@14 {
+		compatible = "genesys,gl9904";
+		reg = <0x14>;
+		enable-gpios = <&gpio3 RK_PC6 GPIO_ACTIVE_LOW>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&gl9904_en>;
+		orientation-switch;
+		mode-switch;
+
+		ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			port@0 {
+				reg = <0>;
+				gl9904_con: endpoint {
+					remote-endpoint = <&usbc0_ss>;
+				};
+			};
+
+			port@1 {
+				reg = <1>;
+				gl9904_phy: endpoint {
+					remote-endpoint = <&usbdp_phy0_ss>;
+				};
+			};
+		};
+	};
+
+	/* DVT extra: silergy,sq52205 at 0x40 */
+
 	pt7c4337: rtc@68 {
 		compatible = "dallas,ds1337";
 		reg = <0x68>;
@@ -367,11 +407,19 @@
 		pinctrl-0 = <&rtc_int_l>;
 	};
 
-	/*
-	 * genesys,gl9904 at 0x14 (0x54?), enable pin is gpio3 RK_PC6 GPIO_ACTIVE_LOW
-	 * silergy,sy9329 at 0x71, enable pin is gpio3 RK_PC1 GPIO_ACTIVE_HIGH, interrupt pin is gpio1 RK_PA7 IRQ_TYPE_LEVEL_LOW
-	 * DVT extra: silergy,sq52205 at 0x40
-	 */
+	vbus_typec: regulator@71 {
+		compatible = "silergy,sy9329";
+		reg = <0x71>;
+		enable-gpios = <&gpio3 RK_PC1 GPIO_ACTIVE_HIGH>;
+		interrupt-parent = <&gpio1>;
+		interrupts = <RK_PA7 IRQ_TYPE_LEVEL_LOW>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&sy9329_en &sy9329_int>;
+		regulator-name = "vbus_typec";
+		regulator-min-microvolt = <5000000>;
+		regulator-max-microvolt = <5000000>;
+		regulator-active-discharge = <1>;
+	};
 };
 
 &i2c4 {
@@ -396,7 +444,7 @@
 	pinctrl-0 = <&i2c7m0_xfer>;
 	status = "okay";
 
-	usbc0: usbc@22 {
+	usbc0: ELO_TYPEC_NODE {
 		compatible = "fcs,fusb302";
 		reg = <0x22>;
 		interrupt-parent = <&gpio0>;
@@ -411,19 +459,17 @@
 			data-role = "dual";
 			power-role = "dual";
 			try-power-role = "sink";
-			op-sink-microwatt = <1000000>;
-			sink-pdos = <
-				PDO_FIXED(5000, 3000, PDO_FIXED_USB_COMM)
-				PDO_FIXED(9000, 3000, PDO_FIXED_USB_COMM)
-				PDO_FIXED(12300, 3000, PDO_FIXED_USB_COMM)
-				PDO_FIXED(20000, 3000, PDO_FIXED_USB_COMM)
-			>;
-			source-pdos = <
-				PDO_FIXED(5000, 3000, PDO_FIXED_USB_COMM)
-				PDO_FIXED(9000, 3000, PDO_FIXED_USB_COMM)
-				PDO_FIXED(12300, 1800, PDO_FIXED_USB_COMM)
-				PDO_FIXED(20000, 1350, PDO_FIXED_USB_COMM)
-			>;
+			op-sink-microwatt = <0>;
+			sink-pdos = <PDO_FIXED(5000, 0, PDO_FIXED_USB_COMM)>;
+			source-pdos = <PDO_FIXED(5000, 3000, PDO_FIXED_USB_COMM)>;
+
+			altmodes {
+				displayport {
+					svid = /bits/ 16 <0xff01>;
+					/* DisplayPort source, pin assignments C and D. */
+					vdo = <0x00000c46>;
+				};
+			};
 
 			ports {
 				#address-cells = <1>;
@@ -431,25 +477,22 @@
 
 				port@0 {
 					reg = <0>;
-
-					usbc0_orien_sw: endpoint {
-						remote-endpoint = <&usbdp_phy0_orientation_switch>;
-					};
-				};
-
-				port@1 {
-					reg = <1>;
-
 					usbc0_role_sw: endpoint {
 						remote-endpoint = <&dwc3_0_role_switch>;
 					};
 				};
 
+				port@1 {
+					reg = <1>;
+					usbc0_ss: endpoint {
+						remote-endpoint = <&gl9904_con>;
+					};
+				};
+
 				port@2 {
 					reg = <2>;
-
-					dp_altmode_mux: endpoint {
-						remote-endpoint = <&usbdp_phy0_dp_altmode_mux>;
+					usbc0_sbu: endpoint {
+						remote-endpoint = <&usbdp_phy0_sbu>;
 					};
 				};
 			};
@@ -573,6 +616,20 @@
 	sdcard {
 		sd_s0_pwr_en: sd-s0-pwr-en {
 			rockchip,pins = <1 RK_PB1 RK_FUNC_GPIO &pcfg_pull_none>;
+		};
+	};
+
+	typec {
+		gl9904_en: gl9904-en {
+			rockchip,pins = <3 RK_PC6 RK_FUNC_GPIO &pcfg_pull_none>;
+		};
+
+		sy9329_en: sy9329-en {
+			rockchip,pins = <3 RK_PC1 RK_FUNC_GPIO &pcfg_pull_none>;
+		};
+
+		sy9329_int: sy9329-int {
+			rockchip,pins = <1 RK_PA7 RK_FUNC_GPIO &pcfg_pull_up>;
 		};
 	};
 
@@ -1103,14 +1160,14 @@
 		#address-cells = <1>;
 		#size-cells = <0>;
 
-		usbdp_phy0_orientation_switch: endpoint@0 {
+		usbdp_phy0_sbu: endpoint@0 {
 			reg = <0>;
-			remote-endpoint = <&usbc0_orien_sw>;
+			remote-endpoint = <&usbc0_sbu>;
 		};
 
-		usbdp_phy0_dp_altmode_mux: endpoint@1 {
+		usbdp_phy0_ss: endpoint@1 {
 			reg = <1>;
-			remote-endpoint = <&dp_altmode_mux>;
+			remote-endpoint = <&gl9904_phy>;
 		};
 	};
 };
@@ -1127,5 +1184,12 @@
 	vp0_out_hdmi0: endpoint@ROCKCHIP_VOP2_EP_HDMI0 {
 		reg = <ROCKCHIP_VOP2_EP_HDMI0>;
 		remote-endpoint = <&hdmi0_in_vp0>;
+	};
+};
+
+&vp2 {
+	vp2_out_dp0: endpoint@a {
+		reg = <ROCKCHIP_VOP2_EP_DP0>;
+		remote-endpoint = <&dp0_in_vp2>;
 	};
 };
