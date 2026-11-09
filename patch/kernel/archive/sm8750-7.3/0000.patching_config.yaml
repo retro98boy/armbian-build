@@ -1,11 +1,11 @@
-config: # This is file 'patch/kernel/archive/sm8750-7.2/0000.patching_config.yaml'
+config: # This is file 'patch/kernel/archive/sm8750-7.3/0000.patching_config.yaml'
 
   # Just some info stuff; not used by the patching scripts
-  name: sm8750-7.2
+  name: sm8750-7.3
   kind: kernel
   type: mainline # or: vendor
-  branch: linux-7.2.y
-  last-known-good-tag: v7.2.10
+  branch: linux-7.3.y
+  last-known-good-tag: v7.3.3
   maintainers:
     - { github: rpardini, name: Ricardo Pardini, email: ricardo@pardini.net, armbian-forum: rpardini }
 
