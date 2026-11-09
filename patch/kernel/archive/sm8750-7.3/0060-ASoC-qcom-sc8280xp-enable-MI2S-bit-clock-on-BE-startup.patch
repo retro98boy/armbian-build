@@ -1,7 +1,7 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From 64f12882c6a0ff53f67b510f0f84b2970644a55f Mon Sep 17 00:00:00 2001
 From: SuperKali <hello@superkali.me>
 Date: Sat, 29 Aug 2026 11:27:39 +0200
-Subject: ASoC qcom sc8280xp enable MI2S bit clock on BE startup
+Subject: [PATCH] ASoC qcom sc8280xp enable MI2S bit clock on BE startup
 
 > X-Git-Archeology: > recovered message: > Bring over the patches ROCKNIX still carries on top of the set imported
 > X-Git-Archeology: > recovered message: > in the bringup: the integrated-jack USBSS routing with the HPH PCM HiFi
@@ -17,11 +17,11 @@ Subject: ASoC qcom sc8280xp enable MI2S bit clock on BE startup
 > X-Git-Archeology:   Subject: kernel/sm8750: sync the remaining ROCKNIX patches
 > X-Git-Archeology:
 ---
- sound/soc/qcom/sc8280xp.c | 62 +++++++++-
+ sound/soc/qcom/sc8280xp.c | 62 +++++++++++++++++++++++++++++++++++++--
  1 file changed, 60 insertions(+), 2 deletions(-)
 
 diff --git a/sound/soc/qcom/sc8280xp.c b/sound/soc/qcom/sc8280xp.c
-index 111111111111..222222222222 100644
+index 4d48e1012cd4..eeaeceed057f 100644
 --- a/sound/soc/qcom/sc8280xp.c
 +++ b/sound/soc/qcom/sc8280xp.c
 @@ -2,6 +2,7 @@
@@ -32,16 +32,16 @@ index 111111111111..222222222222 100644
  #include <linux/module.h>
  #include <linux/platform_device.h>
  #include <sound/soc.h>
-@@ -21,6 +22,8 @@ struct sc8280xp_snd_data {
- 	struct snd_soc_jack jack;
+@@ -81,6 +82,8 @@ struct sc8280xp_snd_data {
  	struct snd_soc_jack dp_jack[8];
+ 	const struct qcom_snd_soc_common *priv;
  	bool jack_setup;
 +	struct clk *i2s_clk;
 +	int mi2s_clk_count;
  };
  
- static int sc8280xp_snd_init(struct snd_soc_pcm_runtime *rtd)
-@@ -114,9 +117,59 @@ static int sc8280xp_snd_hw_free(struct snd_pcm_substream *substream)
+ static inline int sc8280xp_get_mclk_freq(struct snd_pcm_hw_params *params)
+@@ -368,9 +371,59 @@ static int sc8280xp_snd_hw_free(struct snd_pcm_substream *substream)
  	return qcom_snd_sdw_hw_free(substream, &data->stream_prepared[cpu_dai->id]);
  }
  
@@ -100,10 +100,10 @@ index 111111111111..222222222222 100644
 -	.shutdown = qcom_snd_sdw_shutdown,
 +	.startup = sc8280xp_snd_startup,
 +	.shutdown = sc8280xp_snd_shutdown,
+ 	.hw_params = sc8280xp_snd_hw_params,
  	.hw_free = sc8280xp_snd_hw_free,
  	.prepare = sc8280xp_snd_prepare,
- };
-@@ -158,6 +211,11 @@ static int sc8280xp_platform_probe(struct platform_device *pdev)
+@@ -425,6 +478,11 @@ static int sc8280xp_platform_probe(struct platform_device *pdev)
  	if (ret)
  		return ret;
  
@@ -112,9 +112,9 @@ index 111111111111..222222222222 100644
 +		return dev_err_probe(dev, PTR_ERR(data->i2s_clk),
 +				     "failed to get i2s_clk\n");
 +
- 	card->driver_name = of_device_get_match_data(dev);
+ 	card->driver_name = data->priv->driver_name;
  	sc8280xp_add_be_ops(card);
  	return devm_snd_soc_register_card(dev, card);
 -- 
-Armbian
+2.56.0
 

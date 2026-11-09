@@ -1,7 +1,8 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From df8aebb9471c3b4fed115dcf3051a50fc83f904e Mon Sep 17 00:00:00 2001
 From: Alex Ling <ling_kasim@hotmail.com>
 Date: Sun, 13 Sep 2026 12:00:00 +0200
-Subject: drm/panel: chipone-icna35xx: enable DCS tearing effect (TE) signal
+Subject: [PATCH] drm/panel: chipone-icna35xx: enable DCS tearing effect (TE)
+ signal
 
 The ICNA35XX panel driver sends register 0x35 as a generic DSI write
 (0x35, 0x00) but never issues the MIPI DCS SET_TEAR_ON command.  Every
@@ -26,27 +27,27 @@ Signed-off-by: Alex Ling <ling_kasim@hotmail.com>
  1 file changed, 4 insertions(+)
 
 diff --git a/drivers/gpu/drm/panel/panel-chipone-icna35xx.c b/drivers/gpu/drm/panel/panel-chipone-icna35xx.c
-index 111111111111..222222222222 100644
+index 2cc16494a4ce..ea6fcbc1169a 100644
 --- a/drivers/gpu/drm/panel/panel-chipone-icna35xx.c
 +++ b/drivers/gpu/drm/panel/panel-chipone-icna35xx.c
-@@ -109,6 +109,8 @@ static int icna3512_init_sequence(struct panel_info *pinfo)
+@@ -82,6 +82,8 @@ static int icna3512_init_sequence(struct panel_info *pinfo)
  
  	mipi_dsi_msleep(&dsi_ctx, 120);
  
 +	mipi_dsi_dcs_set_tear_on_multi(&dsi_ctx, MIPI_DSI_DCS_TEAR_MODE_VBLANK);
 +
-     mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x9F, 0x0F);
-     mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0xCE, 0x22);
+ 	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x9F, 0x0F);
+ 	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0xCE, 0x22);
  
-@@ -178,6 +180,8 @@ static int icna3520_init_sequence(struct panel_info *pinfo)
+@@ -117,6 +119,8 @@ static int icna3520_init_sequence(struct panel_info *pinfo)
  
  	mipi_dsi_msleep(&dsi_ctx, 120);
  
 +	mipi_dsi_dcs_set_tear_on_multi(&dsi_ctx, MIPI_DSI_DCS_TEAR_MODE_VBLANK);
 +
- 	if (cur_vrefresh == 120) {
- 		mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x48, 0x00);
- 		mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x9F, 0x00);
+ 	/* 120 hz */
+ 	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x48, 0x00);
+ 	mipi_dsi_generic_write_seq_multi(&dsi_ctx, 0x9F, 0x00);
 -- 
-Armbian
+2.56.0
 

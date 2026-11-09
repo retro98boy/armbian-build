@@ -1,4 +1,4 @@
-From 023af7b3773add2f47a261fb7e88acc92822b3e2 Mon Sep 17 00:00:00 2001
+From ae21c993e2bc28c972645206c7b2b4d787f2fa26 Mon Sep 17 00:00:00 2001
 From: GEEKiDoS <geek_ds@foxmail.com>
 Date: Sun, 27 Sep 2026 17:05:28 +0800
 Subject: [PATCH] ASoC: codecs: add AW88461 speaker amplifier support
@@ -17,10 +17,10 @@ Do not retry continuously or bypass PLL and amplifier fault checks.
  create mode 100644 sound/soc/codecs/aw88461.c
 
 diff --git a/sound/soc/codecs/Kconfig b/sound/soc/codecs/Kconfig
-index 269c31ce0..7a333a49d 100644
+index 8e251e1d84b4..833f8c26326c 100644
 --- a/sound/soc/codecs/Kconfig
 +++ b/sound/soc/codecs/Kconfig
-@@ -658,6 +658,19 @@ config SND_SOC_AW8738
+@@ -664,6 +664,19 @@ config SND_SOC_AW8738
  	  SND_SOC_SIMPLE_AMPLIFIER, but additionally allows setting the
  	  operation mode using the Awinic-specific one-wire pulse control.
  
@@ -41,27 +41,28 @@ index 269c31ce0..7a333a49d 100644
  	select CRC8
  	tristate
 diff --git a/sound/soc/codecs/Makefile b/sound/soc/codecs/Makefile
-index 172861d17..073278a68 100644
+index 3d122ace75ad..ec609a450870 100644
 --- a/sound/soc/codecs/Makefile
 +++ b/sound/soc/codecs/Makefile
-@@ -55,6 +55,7 @@ snd-soc-aw88395-y := aw88395/aw88395.o
- snd-soc-aw88166-y := aw88166.o
+@@ -56,6 +56,7 @@ snd-soc-aw88166-y := aw88166.o
  snd-soc-aw88261-y := aw88261.o
  snd-soc-aw88399-y := aw88399.o
+ snd-soc-aw88399-lib-y := aw88399-lib.o
 +snd-soc-aw88461-y := aw88461.o
  snd-soc-bd28623-y := bd28623.o
  snd-soc-bt-sco-y := bt-sco.o
  snd-soc-chv3-codec-y := chv3-codec.o
-@@ -492,6 +493,7 @@ obj-$(CONFIG_SND_SOC_AW88395)	+=snd-soc-aw88395.o
- obj-$(CONFIG_SND_SOC_AW88166)	+=snd-soc-aw88166.o
+@@ -500,6 +501,7 @@ obj-$(CONFIG_SND_SOC_AW88166)	+=snd-soc-aw88166.o
  obj-$(CONFIG_SND_SOC_AW88261)	+=snd-soc-aw88261.o
  obj-$(CONFIG_SND_SOC_AW88399)	+= snd-soc-aw88399.o
+ obj-$(CONFIG_SND_SOC_AW88399_LIB) += snd-soc-aw88399-lib.o
 +obj-$(CONFIG_SND_SOC_AW88461)	+= snd-soc-aw88461.o
  obj-$(CONFIG_SND_SOC_BD28623)	+= snd-soc-bd28623.o
  obj-$(CONFIG_SND_SOC_BT_SCO)	+= snd-soc-bt-sco.o
  obj-$(CONFIG_SND_SOC_CHV3_CODEC) += snd-soc-chv3-codec.o
 diff --git a/sound/soc/codecs/aw88461.c b/sound/soc/codecs/aw88461.c
 new file mode 100644
+index 000000000000..ded1a197372c
 --- /dev/null
 +++ b/sound/soc/codecs/aw88461.c
 @@ -0,0 +1,610 @@
@@ -676,4 +677,5 @@ new file mode 100644
 +MODULE_DESCRIPTION("Awinic AW88461 I2S amplifier driver");
 +MODULE_LICENSE("GPL");
 -- 
-2.55.0
+2.56.0
+
