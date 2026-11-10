@@ -59,6 +59,19 @@ function post_family_tweaks_bsp__lenovo-y700-gen4_alsa_ucm_conf() {
 		"${alsa_ucm_dir}/conf.d/sm8750/Lenovo-Y700-Gen4.conf"
 }
 
+function post_family_tweaks_bsp__lenovo-y700-gen4_wifi_board_data() {
+	# ath12k ignores firmware-name for board data, so it does not read the
+	# Elden file from LENOVO/elden directly. Elden and AYN Odin3 share the
+	# same PCI/QMI IDs but need different BDFs. Replacing the shared file
+	# would change Odin3's board data. The firmware loader checks updates
+	# before the shared directory. This BSP link selects Elden's BDF without
+	# changing ath12k.
+	local board_dir="${destination}/lib/firmware/updates/ath12k/WCN7860/hw2.0"
+	mkdir -p "${board_dir}"
+	ln -sfn "../../../../ath12k/WCN7860/hw2.0/LENOVO/elden/board-2.bin" \
+		"${board_dir}/board-2.bin"
+}
+
 function post_family_tweaks_bsp__lenovo-y700-gen4_sensors() {
 	local sensor_src="${SRC}/packages/bsp/lenovo-y700-gen4/sensors"
 	local units="${destination}/usr/lib/systemd/system"
@@ -186,6 +199,11 @@ function post_family_tweaks_bsp__lenovo-y700-gen4_bsp_firmware_in_initrd() {
 				exit 1
 			fi
 		done
+		# Do not silently fall back to Odin3's shared board data.
+		if [[ ! -f /lib/firmware/updates/ath12k/WCN7860/hw2.0/board-2.bin ]]; then
+			echo "Missing Lenovo Y700 Gen4 Wi-Fi board data" >&2
+			exit 1
+		fi
 		for f in $(find /lib/firmware/qcom/sm8750 -type f) ; do
 		add_firmware "${f#/lib/firmware/}"
 		done
