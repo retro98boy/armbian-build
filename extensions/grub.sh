@@ -28,14 +28,7 @@ function extension_prepare_config__prepare_grub_standard() {
 		# upgrade then dies with "No space left on device" and leaves the kernel
 		# package in iF. Same number and reasoning as DEFAULT_BOOTSIZE_FAT in
 		# partitioning.sh.
-		declare -g UEFISIZE="${UEFISIZE:-512}" # user config wins
-		# A zero or non-numeric size gives no EFI partition, but GRUB is still
-		# installed: the image would not boot. Fail here, not at first boot.
-		# The pattern carries the whole check, so no arithmetic runs on the value:
-		# bash reads a leading zero as octal, where "010" is 8 and "08" is an error.
-		if [[ ! "${UEFISIZE}" =~ ^[1-9][0-9]*$ ]]; then
-			exit_with_error "UEFISIZE must be a positive size in MiB when GRUB is used" "got '${UEFISIZE}'"
-		fi
+		local default_uefisize=512 # user config wins
 		if [[ "${BOOTFS_TYPE:-}" == ext[24] ]]; then
 			# A separate /boot partition (BOOTFS_TYPE, BOOTSIZE). GRUB reads it,
 			# and the EFI partition stays at /boot/efi. Also with cryptroot or LVM.
@@ -47,9 +40,25 @@ function extension_prepare_config__prepare_grub_standard() {
 			# No separate /boot partition: /boot is either on the root
 			# filesystem, or on the EFI partition when BOOTPART_REQUIRED=yes.
 			if [[ -n "${BOOTSIZE:-}" && "${BOOTSIZE:-0}" != "0" ]]; then
-				display_alert "BOOTSIZE is ignored with GRUB" "use UEFISIZE=${BOOTSIZE} to size the EFI partition, or BOOTFS_TYPE=ext4 for a separate /boot" "wrn"
+				if [[ "${UEFI_MOUNT_POINT:-}" == "/boot" ]]; then
+					# /boot is the EFI partition: BOOTSIZE sizes it, unless UEFISIZE is set.
+					# BOOTSIZE 1-8 means the default size, as in prepare_partitions.
+					default_uefisize="${BOOTSIZE}"
+					[[ "${BOOTSIZE}" =~ ^[0-9]+$ ]] && ((BOOTSIZE <= 8)) && default_uefisize=512
+					display_alert "GRUB: /boot is the EFI partition" "size ${UEFISIZE:-${default_uefisize}} MiB" "info"
+				else
+					display_alert "BOOTSIZE is ignored with GRUB" "/boot is on the root filesystem; use BOOTFS_TYPE=ext4 for a separate /boot" "wrn"
+				fi
 			fi
 			declare -g BOOTSIZE=0
+		fi
+		declare -g UEFISIZE="${UEFISIZE:-${default_uefisize}}"
+		# A zero or non-numeric size gives no EFI partition, but GRUB is still
+		# installed: the image would not boot. Fail here, not at first boot.
+		# The pattern carries the whole check, so no arithmetic runs on the value:
+		# bash reads a leading zero as octal, where "010" is 8 and "08" is an error.
+		if [[ ! "${UEFISIZE}" =~ ^[1-9][0-9]*$ ]]; then
+			exit_with_error "UEFISIZE must be a positive size in MiB when GRUB is used" "got '${UEFISIZE}'"
 		fi
 		declare -g EXTRA_BSP_NAME="${EXTRA_BSP_NAME}-grub" # Unique bsp name.
 		declare -g UEFI_GRUB_TARGET_BIOS=""                # Target for BIOS GRUB install, set to i386-pc when UEFI_ENABLE_BIOS_AMD64=yes and target is amd64
@@ -169,8 +178,9 @@ pre_umount_final_image__install_grub() {
 
 	# 32 px menu font for HiDPI panels; 98-armbian.cfg picks it per machine
 	# Made with: grub-mkfont -s 32 --range=0x20-0x7E,0xA0-0x17F,0x2190-0x21FF,0x2500-0x259F DejaVuSansMono.ttf
-	mkdir -p "${MOUNT}"/usr/share/grub/
-	cp "${SRC}"/packages/blobs/grub/armbian-hidpi.pf2 "${MOUNT}"/usr/share/grub/armbian-hidpi.pf2
+	# In /boot: GRUB cannot read an encrypted root. grub-install adds unicode.pf2 there.
+	mkdir -p "${MOUNT}"/boot/grub/fonts/
+	cp "${SRC}"/packages/blobs/grub/armbian-hidpi.pf2 "${MOUNT}"/boot/grub/fonts/armbian-hidpi.pf2
 
 	if [[ "${DISTRO_GENERIC_KERNEL}" == "yes" ]]; then
 		display_alert "Extension: ${EXTENSION}: Using Distro Generic Kernel" "${EXTENSION}: update_initramfs with IMAGE_INSTALLED_KERNEL_VERSION: ${DISTRO_KERNEL_VER}" "debug"
@@ -345,8 +355,8 @@ configure_grub() {
 	display_alert "Extension: ${EXTENSION}: GRUB EFI kernel cmdline" "cmdline '${GRUB_CMDLINE_LINUX_DEFAULT}' distro=${UEFI_GRUB_DISTRO_NAME} timeout=${UEFI_GRUB_TIMEOUT}" ""
 	# Menu font of the image, before update-grub sees the screen of the machine.
 	# Desktop images mostly boot on laptops, often HiDPI: start with the 32 px font.
-	declare grub_font="/usr/share/grub/unicode.pf2"
-	[[ "${BUILD_DESKTOP}" == "yes" ]] && grub_font="/usr/share/grub/armbian-hidpi.pf2"
+	declare grub_font="/boot/grub/fonts/unicode.pf2"
+	[[ "${BUILD_DESKTOP}" == "yes" ]] && grub_font="/boot/grub/fonts/armbian-hidpi.pf2"
 
 	cat <<- grubCfgFrag >> "${MOUNT}"/etc/default/grub.d/98-armbian.cfg
 		GRUB_CMDLINE_LINUX_DEFAULT="${GRUB_CMDLINE_LINUX_DEFAULT}"
@@ -378,19 +388,22 @@ configure_grub() {
 	# update-grub decides on each run. Without a connected display, the image font stays.
 	# The image build skips it: the chroot sees the host's displays.
 	cat <<- 'grubCfgFragHiDPI' >> "${MOUNT}"/etc/default/grub.d/98-armbian.cfg
-		if [ ! -f /etc/default/grub.d/99-armbian-host-side.cfg ] && [ -f /usr/share/grub/armbian-hidpi.pf2 ]; then
+		if [ ! -f /etc/default/grub.d/99-armbian-host-side.cfg ] && [ -f /boot/grub/fonts/armbian-hidpi.pf2 ]; then
 		  _font=
 		  for _status in /sys/class/drm/card*-*/status; do
 		    [ "$(cat "$_status" 2> /dev/null)" = connected ] || continue
 		    read -r _mode < "${_status%/status}/modes" 2> /dev/null || continue
 		    if [ "${_mode%%x*}" -ge 2560 ] 2> /dev/null; then
-		      _font=/usr/share/grub/armbian-hidpi.pf2
+		      _font=/boot/grub/fonts/armbian-hidpi.pf2
 		      break
 		    fi
-		    _font=/usr/share/grub/unicode.pf2
+		    _font=/boot/grub/fonts/unicode.pf2
 		  done
 		  [ -n "$_font" ] && GRUB_FONT="$_font"
 		  unset _status _mode _font
 		fi
+		# update-grub fails on a missing font file. GRUB cannot read an encrypted root.
+		[ -f "$GRUB_FONT" ] || GRUB_FONT=/boot/grub/fonts/unicode.pf2
+		[ -f "$GRUB_FONT" ] || GRUB_FONT=/usr/share/grub/unicode.pf2
 	grubCfgFragHiDPI
 }
