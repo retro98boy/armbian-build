@@ -1,0 +1,270 @@
+From: retro98boy <retro98boy@qq.com>
+Subject: [PATCH] Input: nt36536 - add double-tap wakeup
+
+Enter firmware gesture mode when wakeup-source is enabled.
+Report double taps through a dedicated KEY_WAKEUP input device.
+Keep normal touch reports disabled while the display sleeps.
+Balance IRQ wake configuration across system suspend and resume.
+
+Signed-off-by: retro98boy <retro98boy@qq.com>
+---
+diff --git a/drivers/input/touchscreen/nt36536/nt36xxx.c b/drivers/input/touchscreen/nt36536/nt36xxx.c
+--- a/drivers/input/touchscreen/nt36536/nt36xxx.c
++++ b/drivers/input/touchscreen/nt36536/nt36xxx.c
+@@ -24,6 +24,8 @@
+ #include <linux/proc_fs.h>
+ #include <linux/input/mt.h>
+ #include <linux/of_irq.h>
++#include <linux/pm_wakeup.h>
++#include <linux/property.h>
+ #include <uapi/linux/sched/types.h>
+ #include "nt36xxx.h"
+ 
+@@ -50,6 +52,43 @@
+ uint32_t SPI_RD_FAST_ADDR = 0;	//read from dtsi
+ 
+ static uint8_t bTouchIsAwake = 0;
++
++#define NVT_CMD_DEEP_SLEEP	0x11
++#define NVT_CMD_WAKE_GESTURE	0x13
++#define NVT_GESTURE_DOUBLE_TAP	15
++#define NVT_GESTURE_EXTENDED	30
++
++static void nvt_disable_wakeup(void *data)
++{
++	device_init_wakeup(data, false);
++}
++
++static void nvt_disable_irq_wake(void)
++{
++	if (ts->irq_wake_enabled) {
++		disable_irq_wake(ts->client->irq);
++		ts->irq_wake_enabled = false;
++	}
++}
++
++static void nvt_report_wakeup(const u8 *data)
++{
++	u8 gesture = data[1] >> 3;
++
++	/* Some firmware versions wrap gesture IDs in a function-page event. */
++	if (gesture == NVT_GESTURE_EXTENDED && data[2] == 1)
++		gesture = data[3];
++
++	if (gesture != NVT_GESTURE_DOUBLE_TAP ||
++	    !device_may_wakeup(&ts->client->dev))
++		return;
++
++	pm_wakeup_event(&ts->client->dev, 1000);
++	input_report_key(ts->wakeup_input_dev, KEY_WAKEUP, 1);
++	input_sync(ts->wakeup_input_dev);
++	input_report_key(ts->wakeup_input_dev, KEY_WAKEUP, 0);
++	input_sync(ts->wakeup_input_dev);
++}
+ 
+ /*******************************************************
+ Description:
+@@ -942,13 +981,29 @@
+ 		nvt_read_fw_history(ts->mmap->MMAP_HISTORY_EVENT1);
+ 		release_touch_event();
+ 		release_pen_event();
+-		nvt_update_firmware(ts->fw_name);
++		ret = nvt_update_firmware(ts->fw_name);
++		/* Firmware reload exits gesture mode; restore it before waiting. */
++		if (!bTouchIsAwake && ts->gesture_mode) {
++			if (!ret)
++				ret = nvt_write_addr(ts->mmap->EVENT_BUF_ADDR |
++						     EVENT_MAP_HOST_CMD,
++						     NVT_CMD_WAKE_GESTURE);
++			if (ret)
++				dev_err(&ts->client->dev,
++					"Failed to restore wake gestures: %d\n", ret);
++		}
+ 		goto XFER_ERROR;
+ 	}
+ #endif /* #if NVT_TOUCH_WDT_RECOVERY */
+ 
+ 	/* ESD protect by FW handshake */
+ 	if (nvt_fw_recovery(fw_state)) {
++		goto XFER_ERROR;
++	}
++
++	if (!bTouchIsAwake) {
++		if (ts->gesture_mode)
++			nvt_report_wakeup(point_data);
+ 		goto XFER_ERROR;
+ 	}
+ 
+@@ -1268,6 +1323,16 @@
+ 		goto err_spi_setup;
+ 	}
+ 
++	if (device_property_read_bool(&client->dev, "wakeup-source")) {
++		ret = device_init_wakeup(&client->dev, true);
++		if (ret)
++			goto err_spi_setup;
++		ret = devm_add_action_or_reset(&client->dev, nvt_disable_wakeup,
++					       &client->dev);
++		if (ret)
++			goto err_spi_setup;
++	}
++
+ 	mutex_init(&ts->lock);
+ 	mutex_init(&ts->xbuf_lock);
+ 
+@@ -1347,6 +1412,20 @@
+ 	ts->input_dev->phys = ts->phys;
+ 	ts->input_dev->id.bustype = BUS_SPI;
+ 
++	if (device_can_wakeup(&client->dev)) {
++		ts->wakeup_input_dev = devm_input_allocate_device(&client->dev);
++		if (!ts->wakeup_input_dev) {
++			ret = -ENOMEM;
++			goto err_input_register_device_failed;
++		}
++		ts->wakeup_input_dev->name = "Novatek NT36536 Wakeup";
++		ts->wakeup_input_dev->id.bustype = BUS_SPI;
++		input_set_capability(ts->wakeup_input_dev, EV_KEY, KEY_WAKEUP);
++		ret = input_register_device(ts->wakeup_input_dev);
++		if (ret)
++			goto err_input_register_device_failed;
++	}
++
+ 	//---register input device---
+ 	ret = input_register_device(ts->input_dev);
+ 	if (ret) {
+@@ -1512,6 +1591,7 @@
+ static void nvt_ts_remove(struct spi_device *client)
+ {
+ 	NVT_LOG("Removing driver...\n");
++	nvt_disable_irq_wake();
+ 
+ 	bTouchIsAwake = 0;
+ 
+@@ -1575,6 +1655,7 @@
+ static void nvt_ts_shutdown(struct spi_device *client)
+ {
+ 	NVT_LOG("Shutdown driver...\n");
++	nvt_disable_irq_wake();
+ 
+ #if defined(CONFIG_DRM_PANEL)
+ 	if (ts->panel_follower_registered) {
+@@ -1607,7 +1688,8 @@
+ *******************************************************/
+ static int32_t nvt_ts_suspend(struct device *dev)
+ {
+-	uint8_t buf[4] = {0};
++	bool wakeup = device_may_wakeup(dev);
++	int ret = 0;
+ 	uint32_t i = 0;
+ 
+ 	if (!bTouchIsAwake) {
+@@ -1616,6 +1698,13 @@
+ 	}
+ 
+ 	pm_stay_awake(dev);
++
++#if BOOT_UPDATE_FIRMWARE
++	/* A late boot download would otherwise overwrite gesture mode. */
++	if (nvt_fwu_wq)
++		flush_delayed_work(&ts->nvt_fwu_work);
++#endif
++
+ 	ts->ic_state = NVT_IC_SUSPEND_IN;
+ 
+ 	nvt_irq_enable(false);
+@@ -1626,9 +1715,13 @@
+ 
+ 	bTouchIsAwake = 0;
+ 
+-	/*---write command to enter "deep sleep mode"---*/
+-	buf[0] = EVENT_MAP_HOST_CMD;
+-	buf[1] = 0x11;
++	/* Keep firmware scanning only when this device is a wakeup source. */
++	if (device_can_wakeup(dev))
++		ret = nvt_write_addr(ts->mmap->EVENT_BUF_ADDR | EVENT_MAP_HOST_CMD,
++				     wakeup ? NVT_CMD_WAKE_GESTURE : NVT_CMD_DEEP_SLEEP);
++	ts->gesture_mode = wakeup && !ret;
++	if (ret)
++		dev_err(dev, "Failed to enter touch sleep mode: %d\n", ret);
+ 	mutex_unlock(&ts->lock);
+ 
+ 	/* release all touches */
+@@ -1664,7 +1757,10 @@
+ 	NVT_LOG("end\n");
+ 	pm_relax(dev);
+ 
+-	return 0;
++	if (ts->gesture_mode)
++		nvt_irq_enable(true);
++
++	return ret;
+ }
+ 
+ /*******************************************************
+@@ -1689,7 +1785,10 @@
+ 	if (ts->dev_pm_suspend)
+ 		pm_stay_awake(dev);
+ 
++	/* A gesture IRQ can be waiting for the same mutex. */
++	nvt_irq_enable(false);
+ 	mutex_lock(&ts->lock);
++	ts->gesture_mode = false;
+ 
+ 	NVT_LOG("start\n");
+ 
+@@ -1702,8 +1801,6 @@
+ 		nvt_check_fw_reset_state(RESET_STATE_REK);
+ 	}
+ 
+-	nvt_irq_enable(true);
+-
+ 	bTouchIsAwake = 1;
+ 
+ 	if (likely(ts->ic_state == NVT_IC_RESUME_IN)) {
+@@ -1713,6 +1810,7 @@
+ 	}
+ 
+ 	mutex_unlock(&ts->lock);
++	nvt_irq_enable(true);
+ 
+ 	NVT_LOG("end\n");
+ 
+@@ -1773,6 +1871,15 @@
+ #ifdef CONFIG_PM
+ static int nvt_pm_suspend(struct device *dev)
+ {
++	int ret;
++
++	if (ts->gesture_mode && device_may_wakeup(dev)) {
++		ret = enable_irq_wake(ts->client->irq);
++		if (ret)
++			return ret;
++		ts->irq_wake_enabled = true;
++	}
++
+ 	NVT_LOG("system enters into pm_suspend");
+ 	ts->dev_pm_suspend = true;
+ 	reinit_completion(&ts->dev_pm_suspend_completion);
+@@ -1782,6 +1889,8 @@
+ 
+ static int nvt_pm_resume(struct device *dev)
+ {
++	nvt_disable_irq_wake();
++
+ 	NVT_LOG("system resume from pm_suspend");
+ 	ts->dev_pm_suspend = false;
+ 	complete(&ts->dev_pm_suspend_completion);
+diff --git a/drivers/input/touchscreen/nt36536/nt36xxx.h b/drivers/input/touchscreen/nt36536/nt36xxx.h
+--- a/drivers/input/touchscreen/nt36536/nt36xxx.h
++++ b/drivers/input/touchscreen/nt36536/nt36xxx.h
+@@ -112,6 +112,9 @@
+ struct nvt_ts_data {
+ 	struct spi_device *client;
+ 	struct input_dev *input_dev;
++	struct input_dev *wakeup_input_dev;
++	bool gesture_mode;
++	bool irq_wake_enabled;
+ 	struct delayed_work nvt_fwu_work;
+ 	struct mutex pen_switch_lock;
+ 	int ic_state;

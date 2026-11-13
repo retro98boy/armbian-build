@@ -1,0 +1,120 @@
+From: retro98boy <retro98boy@qq.com>
+Subject: [PATCH] drm/panel: novatek-nt36536: retain power for touch wakeup
+
+Allow integrated touch controllers to scan gestures during display sleep.
+Keep shared reset and supplies active only on opted-in panels.
+Balance regulator enables across repeated blanking cycles.
+
+Signed-off-by: retro98boy <retro98boy@qq.com>
+---
+diff --git a/drivers/gpu/drm/panel/panel-novatek-nt36536.c b/drivers/gpu/drm/panel/panel-novatek-nt36536.c
+--- a/drivers/gpu/drm/panel/panel-novatek-nt36536.c
++++ b/drivers/gpu/drm/panel/panel-novatek-nt36536.c
+@@ -14,6 +14,7 @@
+ #include <linux/module.h>
+ #include <linux/of.h>
+ #include <linux/of_graph.h>
++#include <linux/property.h>
+ #include <linux/regulator/consumer.h>
+ 
+ #include <drm/display/drm_dsc.h>
+@@ -33,6 +34,8 @@
+ 	struct gpio_desc *reset_gpio;
+ 	struct regulator_bulk_data *supplies;
+ 	struct backlight_device *backlight;
++	bool powered;
++	bool keep_power_in_sleep;
+ };
+ 
+ struct panel_desc {
+@@ -81,6 +84,23 @@
+ 	usleep_range(10000, 11000);
+ }
+ 
++static void novatek_power_off(void *data)
++{
++	struct novatek *ctx = data;
++	int ret;
++
++	if (!ctx->powered)
++		return;
++
++	gpiod_set_value_cansleep(ctx->reset_gpio, 1);
++	ret = regulator_bulk_disable(ARRAY_SIZE(novatek_supplies), ctx->supplies);
++	if (ret) {
++		dev_err(ctx->panel.dev, "Failed to disable supplies: %d\n", ret);
++		return;
++	}
++	ctx->powered = false;
++}
++
+ static int novatek_prepare(struct drm_panel *panel)
+ {
+ 	struct novatek *ctx = to_novatek(panel);
+@@ -90,19 +110,20 @@
+ 	struct device *dev = &dsi->dev;
+ 	int ret;
+ 
+-	ret = regulator_bulk_enable(ARRAY_SIZE(novatek_supplies),
+-				    ctx->supplies);
+-	if (ret < 0)
+-		return ret;
++	if (!ctx->powered) {
++		ret = regulator_bulk_enable(ARRAY_SIZE(novatek_supplies),
++					    ctx->supplies);
++		if (ret < 0)
++			return ret;
++		ctx->powered = true;
++	}
+ 
+ 	novatek_reset(ctx);
+ 
+ 	ret = ctx->desc->init_sequence(&dsi_ctx);
+ 	if (ret < 0) {
+ 		dev_err(dev, "Failed to initialize panel: %d\n", ret);
+-		gpiod_set_value_cansleep(ctx->reset_gpio, 1);
+-		regulator_bulk_disable(ARRAY_SIZE(novatek_supplies),
+-				       ctx->supplies);
++		novatek_power_off(ctx);
+ 		return ret;
+ 	}
+ 
+@@ -136,8 +157,9 @@
+ 	if (ret < 0)
+ 		dev_err(dev, "Failed to un-initialize panel: %d\n", ret);
+ 
+-	gpiod_set_value_cansleep(ctx->reset_gpio, 1);
+-	regulator_bulk_disable(ARRAY_SIZE(novatek_supplies), ctx->supplies);
++	/* Touch gesture scanning shares the panel's reset and power supplies. */
++	if (!ctx->keep_power_in_sleep)
++		novatek_power_off(ctx);
+ 
+ 	return 0;
+ }
+@@ -384,6 +406,11 @@
+ 	if (IS_ERR(ctx->reset_gpio))
+ 		return dev_err_probe(dev, PTR_ERR(ctx->reset_gpio),
+ 				     "Failed to get reset-gpios\n");
++	ctx->keep_power_in_sleep =
++		device_property_read_bool(dev, "novatek,keep-power-in-sleep");
++	ret = devm_add_action_or_reset(dev, novatek_power_off, ctx);
++	if (ret)
++		return ret;
+ 
+ 	desc = of_device_get_match_data(dev);
+ 	if (!desc)
+@@ -473,8 +500,14 @@
+ };
+ MODULE_DEVICE_TABLE(of, novatek_of_match);
+ 
++static void novatek_shutdown(struct mipi_dsi_device *dsi)
++{
++	novatek_power_off(mipi_dsi_get_drvdata(dsi));
++}
++
+ static struct mipi_dsi_driver novatek_driver = {
+ 	.probe = novatek_probe,
++	.shutdown = novatek_shutdown,
+ 	.driver = {
+ 		.name = "panel-novatek-nt36536",
+ 		.of_match_table = novatek_of_match,

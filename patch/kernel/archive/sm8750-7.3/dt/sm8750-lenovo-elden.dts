@@ -1041,6 +1041,7 @@
 		pinctrl-names = "default", "sleep";
 
 		backlight = <&backlight>;
+		novatek,keep-power-in-sleep;
 
 		ports {
 			#address-cells = <1>;
@@ -1235,6 +1236,7 @@
 		firmware-name = "novatek/novatek_nt36536_lenovo_elden_csot.bin";
 		touchscreen-size-x = <19040>;
 		touchscreen-size-y = <30400>;
+		wakeup-source;
 	};
 };
 
