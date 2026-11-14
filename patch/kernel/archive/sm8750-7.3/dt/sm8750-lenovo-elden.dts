@@ -837,6 +837,15 @@
 	};
 };
 
+/*
+ * The QCE driver is marked BROKEN due to races with secure firmware.
+ * An enabled QCE node without a bound driver blocks interconnect sync_state().
+ * Boot bandwidth votes then keep DDR at 4761 MHz, increasing idle power.
+ */
+&crypto {
+	status = "disabled";
+};
+
 &gpi_dma1 {
 	status = "okay";
 };
