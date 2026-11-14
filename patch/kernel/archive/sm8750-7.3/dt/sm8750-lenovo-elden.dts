@@ -1140,7 +1140,11 @@
 };
 
 &pcieport0 {
-	wake-gpios = <&tlmm 104 GPIO_ACTIVE_HIGH>;
+	/*
+	 * PCIe WAKE# on GPIO104 is active low; the line idles high.
+	 * Active-high polarity falsely triggers the wake IRQ and aborts suspend.
+	 */
+	wake-gpios = <&tlmm 104 GPIO_ACTIVE_LOW>;
 	reset-gpios = <&tlmm 102 GPIO_ACTIVE_LOW>;
 
 	wifi@0 {
