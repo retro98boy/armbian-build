@@ -99,6 +99,15 @@
 		};
 	};
 
+	usb2_mux: mux-controller {
+		compatible = "gpio-mux";
+		#mux-state-cells = <1>;
+		mux-gpios = <&tlmm 29 GPIO_ACTIVE_HIGH>;
+
+		pinctrl-0 = <&usb2_mux_default>;
+		pinctrl-names = "default";
+	};
+
 	pmic-glink {
 		compatible = "qcom,sm8750-pmic-glink",
 			     "qcom,sm8550-pmic-glink",
@@ -907,7 +916,7 @@
 
 		reset-gpios = <&pm8550ve_gpios 6 GPIO_ACTIVE_LOW>;
 
-		pinctrl-0 = <&eusb_reset_n>, <&eusb_mux_default>;
+		pinctrl-0 = <&eusb_reset_n>;
 		pinctrl-names = "default";
 	};
 };
@@ -1330,11 +1339,10 @@
 		bias-pull-down;
 	};
 
-	eusb_mux_default: eusb-mux-default-state {
+	usb2_mux_default: usb2-mux-default-state {
 		pins = "gpio29";
 		function = "gpio";
 		drive-strength = <2>;
-		output-high; /* Unconditionally enable */
 		bias-pull-down;
 	};
 
@@ -1484,24 +1492,26 @@
 	status = "okay";
 
 	ports {
-		/*
-		 * USB2.0 is shared for two ports, set pinctrl eusb_mux_default
-		 * to select the repeter. Plugging out one of them will reset
-		 * the DWC3, which causes both of them to be disconnected.
-		 */
+		/* Both connectors share one USB2 bus selected by GPIO29. */
 		port@0 {
 			reg = <0>;
+			#address-cells = <1>;
+			#size-cells = <0>;
 
-			usb_dwc3_hs: endpoint {
+			/delete-node/ endpoint;
+
+			usb_dwc3_hs: endpoint@0 {
+				reg = <0>;
 				remote-endpoint = <&pmic_glink_hs_in>;
+				usb-role-switch;
+				mux-states = <&usb2_mux 0>;
 			};
-		};
 
-		port@2 {
-			reg = <2>;
-
-			usb_dwc3_hs2: endpoint {
+			usb_dwc3_hs2: endpoint@1 {
+				reg = <1>;
 				remote-endpoint = <&pmic_glink_hs_c2_in>;
+				usb-role-switch;
+				mux-states = <&usb2_mux 1>;
 			};
 		};
 	};
