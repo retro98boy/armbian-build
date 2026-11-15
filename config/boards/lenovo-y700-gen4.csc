@@ -192,7 +192,6 @@ function post_family_tweaks_bsp__lenovo-y700-gen4_bsp_firmware_in_initrd() {
 		add_firmware "qcom/gen80000_gmu.bin" # Extra one for gpu
 		add_firmware "qcom/gen80000_sqe.fw" # Extra one for gpu
 		add_firmware "qcom/gen80000_aqe.fw" # Extra one for gpu
-		add_firmware "qcom/vpu/vpu30_p4.mbn" # Extra one for vpu
 		# Extra one for wifi
 		for f in $(find /lib/firmware/ath12k/WCN7860/hw2.0 -type f) ; do
 		add_firmware "${f#/lib/firmware/}"

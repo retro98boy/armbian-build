@@ -1023,6 +1023,11 @@
 	};
 };
 
+&iris {
+	firmware-name = "qcom/sm8750/LENOVO/elden/vpu35_4v.mbn";
+	status = "okay";
+};
+
 &mdss {
 	status = "okay";
 };
