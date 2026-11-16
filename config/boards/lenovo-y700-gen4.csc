@@ -23,14 +23,14 @@ if [[ "${WITH_GRUB}" == "yes" ]]; then
 	# repartition the existing UFS LUN when those defaults change.
 	declare -g UEFISIZE=512
 	declare -g UEFI_GRUB_TERMINAL="gfxterm"
-	declare -g GRUB_CMDLINE_LINUX_DEFAULT="rootwait quiet video=efifb:off efi=noruntime clk_ignore_unused regulator_ignore_unused pd_ignore_unused"
+	declare -g GRUB_CMDLINE_LINUX_DEFAULT="rootwait quiet video=efifb:off efi=noruntime"
 	declare -g SERIALCON="${SERIALCON:-tty0}"
 	declare -g BOOT_FDT_FILE="qcom/sm8750-lenovo-elden.dtb"
 
 	enable_extension "lenovo-y700-gen4-grub-split-image"
 else
 	declare -g -a ABL_DTB_LIST=("sm8750-lenovo-elden")
-	declare -g BOOTIMG_CMDLINE_EXTRA="rootwait rw console=tty0 quiet clk_ignore_unused regulator_ignore_unused pd_ignore_unused"
+	declare -g BOOTIMG_CMDLINE_EXTRA="rootwait rw console=tty0 quiet"
 
 	function post_family_tweaks_bsp__lenovo-y700-gen4_kernel_postinst() {
 		install -Dm755 $SRC/packages/bsp/lenovo-y700-gen4/zz-update-abl-kernel $destination/etc/kernel/postinst.d/
