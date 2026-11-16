@@ -1,0 +1,248 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: retro98boy <retro98boy@qq.com>
+Subject: [PATCH] power: supply: qcom_battmgr: add Lenovo Y700 Gen4 bypass charging
+
+Expose charge_behaviour on Lenovo Y700 Gen4 to stop battery charging
+while retaining adapter input. Use the factory charger firmware commands.
+
+The Lenovo extension uses opcode 0x61, property 0x1b for input suspend,
+and property 0x1c for charging enable. Read back charging enable through
+opcode 0x60. Propagate firmware command failures to userspace.
+
+Expose this interface only on Lenovo Y700 Gen4. Preserve existing charge
+thresholds and leave bypass policy to userspace.
+
+Serialize notification setup with property requests on all devices.
+These requests share one completion and must not overlap.
+
+Derived from Battery HAL, system framework, and qti_battery_charger.ko
+in TB322_ZUXOS_1.5.10.259_Tool.
+
+Signed-off-by: retro98boy <retro98boy@qq.com>
+---
+--- a/drivers/power/supply/qcom_battmgr.c
++++ b/drivers/power/supply/qcom_battmgr.c
+@@ -9,6 +9,7 @@
+ #include <linux/module.h>
+ #include <linux/mutex.h>
+ #include <linux/nvmem-consumer.h>
++#include <linux/of.h>
+ #include <linux/of_device.h>
+ #include <linux/power_supply.h>
+ #include <linux/property.h>
+@@ -98,6 +99,12 @@
+ #define WLS_CURR_MAX			4
+ #define WLS_TYPE			5
+ #define WLS_BOOST_EN			6
++
++/* Lenovo charger firmware uses a separate property namespace. */
++#define BATTMGR_LENOVO_PROPERTY_GET	0x60
++#define BATTMGR_LENOVO_PROPERTY_SET	0x61
++#define LENOVO_INPUT_SUSPEND		0x1b
++#define LENOVO_CHARGING_ENABLE		0x1c
+ 
+ #define BATTMGR_CHG_CTRL_LIMIT_EN	0x48
+ #define CHARGE_CTRL_START_THR_MIN	50
+@@ -327,6 +334,10 @@
+ 
+ 	bool service_up;
+ 	bool current_inverted;
++	bool lenovo_charger;
++	u32 lenovo_opcode;
++	u32 lenovo_property;
++	u32 lenovo_value;
+ 
+ 	struct qcom_battmgr_info info;
+ 	struct qcom_battmgr_status status;
+@@ -376,6 +387,119 @@
+ 	};
+ 
+ 	return qcom_battmgr_request(battmgr, &request, sizeof(request));
++}
++
++static int qcom_battmgr_lenovo_request(struct qcom_battmgr *battmgr,
++				       u32 opcode, u32 property, u32 value)
++{
++	int ret;
++
++	lockdep_assert_held(&battmgr->lock);
++
++	if (!battmgr->service_up)
++		return -EAGAIN;
++
++	battmgr->lenovo_property = property;
++	WRITE_ONCE(battmgr->lenovo_opcode, opcode);
++	ret = qcom_battmgr_request_property(battmgr, opcode, property, value);
++	WRITE_ONCE(battmgr->lenovo_opcode, 0);
++
++	return ret;
++}
++
++static int qcom_battmgr_lenovo_get_property(struct power_supply *psy,
++					    const struct power_supply_ext *ext,
++					    void *data,
++					    enum power_supply_property psp,
++					    union power_supply_propval *val)
++{
++	struct qcom_battmgr *battmgr = data;
++	int ret;
++
++	mutex_lock(&battmgr->lock);
++	ret = qcom_battmgr_lenovo_request(battmgr, BATTMGR_LENOVO_PROPERTY_GET,
++					  LENOVO_CHARGING_ENABLE, 0);
++	if (!ret) {
++		if (battmgr->lenovo_value > 1)
++			ret = -ERANGE;
++		else if (battmgr->lenovo_value)
++			val->intval = POWER_SUPPLY_CHARGE_BEHAVIOUR_AUTO;
++		else
++			val->intval = POWER_SUPPLY_CHARGE_BEHAVIOUR_INHIBIT_CHARGE;
++	}
++	mutex_unlock(&battmgr->lock);
++
++	return ret;
++}
++
++static int qcom_battmgr_lenovo_set_property(struct power_supply *psy,
++					    const struct power_supply_ext *ext,
++					    void *data,
++					    enum power_supply_property psp,
++					    const union power_supply_propval *val)
++{
++	struct qcom_battmgr *battmgr = data;
++	bool charging_enabled;
++	int ret;
++
++	switch (val->intval) {
++	case POWER_SUPPLY_CHARGE_BEHAVIOUR_AUTO:
++		charging_enabled = true;
++		break;
++	case POWER_SUPPLY_CHARGE_BEHAVIOUR_INHIBIT_CHARGE:
++		charging_enabled = false;
++		break;
++	default:
++		return -EINVAL;
++	}
++
++	mutex_lock(&battmgr->lock);
++	if (!charging_enabled) {
++		/* Keep adapter input active while stopping battery charging. */
++		ret = qcom_battmgr_lenovo_request(battmgr, BATTMGR_LENOVO_PROPERTY_SET,
++						  LENOVO_INPUT_SUSPEND, 0);
++		if (ret)
++			goto out;
++	}
++
++	ret = qcom_battmgr_lenovo_request(battmgr, BATTMGR_LENOVO_PROPERTY_SET,
++					  LENOVO_CHARGING_ENABLE, charging_enabled);
++out:
++	mutex_unlock(&battmgr->lock);
++	if (!ret)
++		power_supply_changed(psy);
++
++	return ret;
++}
++
++static int qcom_battmgr_lenovo_is_writeable(struct power_supply *psy,
++					    const struct power_supply_ext *ext,
++					    void *data,
++					    enum power_supply_property psp)
++{
++	return psp == POWER_SUPPLY_PROP_CHARGE_BEHAVIOUR;
++}
++
++static const enum power_supply_property qcom_battmgr_lenovo_props[] = {
++	POWER_SUPPLY_PROP_CHARGE_BEHAVIOUR,
++};
++
++static const struct power_supply_ext qcom_battmgr_lenovo_ext = {
++	.name = "lenovo-charge-control",
++	.properties = qcom_battmgr_lenovo_props,
++	.num_properties = ARRAY_SIZE(qcom_battmgr_lenovo_props),
++	.charge_behaviours = BIT(POWER_SUPPLY_CHARGE_BEHAVIOUR_AUTO) |
++			     BIT(POWER_SUPPLY_CHARGE_BEHAVIOUR_INHIBIT_CHARGE),
++	.get_property = qcom_battmgr_lenovo_get_property,
++	.set_property = qcom_battmgr_lenovo_set_property,
++	.property_is_writeable = qcom_battmgr_lenovo_is_writeable,
++};
++
++static void qcom_battmgr_lenovo_unregister(void *data)
++{
++	struct qcom_battmgr *battmgr = data;
++
++	power_supply_unregister_extension(battmgr->bat_psy, &qcom_battmgr_lenovo_ext);
+ }
+ 
+ static int qcom_battmgr_update_status(struct qcom_battmgr *battmgr)
+@@ -1588,14 +1712,41 @@
+ 	complete(&battmgr->ack);
+ }
+ 
++static void qcom_battmgr_lenovo_callback(struct qcom_battmgr *battmgr,
++					 const struct qcom_battmgr_message *resp,
++					 size_t len)
++{
++	if (le32_to_cpu(resp->hdr.opcode) != READ_ONCE(battmgr->lenovo_opcode))
++		return;
++
++	if (len != sizeof(resp->hdr) + sizeof(resp->intval)) {
++		battmgr->error = -ENODATA;
++	} else {
++		if (le32_to_cpu(resp->intval.property) != battmgr->lenovo_property)
++			return;
++		battmgr->error = le32_to_cpu(resp->intval.result) ? -EIO : 0;
++		battmgr->lenovo_value = le32_to_cpu(resp->intval.value);
++	}
++
++	complete(&battmgr->ack);
++}
++
+ static void qcom_battmgr_callback(const void *data, size_t len, void *priv)
+ {
+ 	const struct pmic_glink_hdr *hdr = data;
+ 	struct qcom_battmgr *battmgr = priv;
+ 	unsigned int opcode = le32_to_cpu(hdr->opcode);
+ 
++	if (battmgr->lenovo_charger &&
++	    (opcode == BATTMGR_LENOVO_PROPERTY_GET || opcode == BATTMGR_LENOVO_PROPERTY_SET)) {
++		qcom_battmgr_lenovo_callback(battmgr, data, len);
++		return;
++	}
++
+ 	if (opcode == BATTMGR_NOTIFICATION)
+ 		qcom_battmgr_notification(battmgr, data, len);
++	else if (READ_ONCE(battmgr->lenovo_opcode))
++		return;
+ 	else if (battmgr->variant == QCOM_BATTMGR_SC8280XP ||
+ 		 battmgr->variant == QCOM_BATTMGR_X1E80100)
+ 		qcom_battmgr_sc8280xp_callback(battmgr, data, len);
+@@ -1613,7 +1764,10 @@
+ 	};
+ 	int ret;
+ 
++	/* Notification setup and property requests share the same completion. */
++	mutex_lock(&battmgr->lock);
+ 	ret = qcom_battmgr_request(battmgr, &req, sizeof(req));
++	mutex_unlock(&battmgr->lock);
+ 	if (ret)
+ 		dev_err(battmgr->dev, "failed to request power notifications\n");
+ }
+@@ -1747,7 +1901,18 @@
+ 	if (IS_ERR(battmgr->client))
+ 		return PTR_ERR(battmgr->client);
+ 
++	battmgr->lenovo_charger = of_machine_is_compatible("lenovo,elden");
+ 	pmic_glink_client_register(battmgr->client);
++
++	if (battmgr->lenovo_charger) {
++		/* These firmware properties are only verified on Lenovo Y700 Gen4. */
++		ret = power_supply_register_extension(battmgr->bat_psy,
++						      &qcom_battmgr_lenovo_ext, dev, battmgr);
++		if (ret)
++			return ret;
++
++		return devm_add_action_or_reset(dev, qcom_battmgr_lenovo_unregister, battmgr);
++	}
+ 
+ 	return 0;
+ }
