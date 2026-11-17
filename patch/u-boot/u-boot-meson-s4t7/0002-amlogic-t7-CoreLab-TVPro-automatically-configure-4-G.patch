@@ -1,0 +1,227 @@
+From 4e1185876a1563fa852556e95ae2916c0c45d315 Mon Sep 17 00:00:00 2001
+From: retro98boy <retro98boy@qq.com>
+Date: Sat, 18 Apr 2026 22:33:19 +0800
+Subject: [PATCH 2/3] amlogic t7: CoreLab TVPro: automatically configure 4 GB
+ or 8 GB of RAM based on the board ID
+
+https://github.com/anshi233/khadas-u-boot-4g/commit/67afe9ebae35a15340c6e717a87a060bb1145705
+
+Change-Id: I92004e25be2f042761753ce4e182ed67d192494a
+---
+ board/khadas/tvpro/firmware/timing.c | 171 +++++++++++++++++++++++++--
+ 1 file changed, 160 insertions(+), 11 deletions(-)
+
+diff --git a/board/khadas/tvpro/firmware/timing.c b/board/khadas/tvpro/firmware/timing.c
+index 15ad83bb158..a076e20ef44 100644
+--- a/board/khadas/tvpro/firmware/timing.c
++++ b/board/khadas/tvpro/firmware/timing.c
+@@ -53,8 +53,9 @@
+ #define         AN_408_DDR0_2G_DDR1_2G_RANK01   5
+ #define         AN_408_DDR0_4G_DDR1_4G_RANK01   6
+ #define         AN_408_DDR0_3G_DDR1_3G_RANK01   7
++#define         TVPRO_AUTO_DETECT               999
+ 
+-#define DDR_SIZE_TYPE_1         AN_408_DDR0_4G_DDR1_4G_RANK01
++#define DDR_SIZE_TYPE_1         TVPRO_AUTO_DETECT
+ 
+ ddr_set_t __ddr_setting[] __attribute__ ((section(".ddr_param"))) = {
+ #if 0
+@@ -276,9 +277,10 @@ ddr_set_t __ddr_setting[] __attribute__ ((section(".ddr_param"))) = {
+ 		.Is2Ttiming = 0,
+ 		.HdtCtrl = 0xc8,
+ 		.cfg_ddr_training_delay_ps[0].dram_bit_vref[0]=0x8,
+-		//.dram_ch0_size_MB		= 0xffff,
+-		//.dram_ch1_size_MB		= 0,
+-#if (DDR_SIZE_TYPE_1 == AN_408_DDR0_1G_DDR1_0G)
++#if (DDR_SIZE_TYPE_1 == TVPRO_AUTO_DETECT) 
++		.dram_ch0_size_MB		= 0xffff,
++		.dram_ch1_size_MB		= 0,
++#elif (DDR_SIZE_TYPE_1 == AN_408_DDR0_1G_DDR1_0G)
+ 		.dram_ch0_size_MB =
+ 			(DRAM_SIZE_ID_256MBX2 << CONFIG_CS0_BYTE_01_SIZE_256_ID_OFFSET) +
+ 			(DRAM_SIZE_ID_256MBX2 << CONFIG_CS0_BYTE_23_SIZE_256_ID_OFFSET) +
+@@ -482,9 +484,10 @@ ddr_set_t __ddr_setting[] __attribute__ ((section(".ddr_param"))) = {
+ 		.Is2Ttiming = 0,
+ 		.HdtCtrl = 0xc8,
+ 		.cfg_ddr_training_delay_ps[0].dram_bit_vref[0]=0x8,
+-		//.dram_ch0_size_MB		= 0xffff,
+-		//.dram_ch1_size_MB		= 0,
+-#if (DDR_SIZE_TYPE_1 == AN_408_DDR0_1G_DDR1_0G)
++#if (DDR_SIZE_TYPE_1 == TVPRO_AUTO_DETECT) 
++		.dram_ch0_size_MB		= 0xffff,
++		.dram_ch1_size_MB		= 0,
++#elif (DDR_SIZE_TYPE_1 == AN_408_DDR0_1G_DDR1_0G)
+ 		.dram_ch0_size_MB =
+ 			(DRAM_SIZE_ID_256MBX2 << CONFIG_CS0_BYTE_01_SIZE_256_ID_OFFSET) +
+ 			(DRAM_SIZE_ID_256MBX2 << CONFIG_CS0_BYTE_23_SIZE_256_ID_OFFSET) +
+@@ -1014,10 +1017,12 @@ __attribute__ ((section(".clk_param"))) = {
+ #error "VDD_DDR val out of range\n"
+ #endif
+ 
+-#define AN_400_DDR4X0_2G_DDR4X1_1G        3
+-#define AN_400_DDR4X0_2G_DDR4X1_2G        5
+-#define AN_400_DDR4X0_3G_DDR4X1_3G        7
+-#define AN_400_DDR4X0_4G_DDR4X0_4G        9
++/* DDR ADC ID */
++#define DDR0_2G_DDR1_1G_DDR_ID        3
++#define DDR0_2G_DDR1_2G_DDR_ID        5
++#define DDR0_3G_DDR1_3G_RANK01_DDR_ID 7
++#define DDR0_4G_DDR1_4G_RANK01_DDR_ID 9
++
+ #define DDR_RESV_CHECK_ID_ENABLE   0Xfe
+ #define SAR_ADC_DDR_ID_BASE   0
+ #define SAR_ADC_DDR_ID_STEP   80
+@@ -1027,6 +1032,150 @@ __attribute__ ((section(".clk_param"))) = {
+ #define DDR_TIMMING_TUNE_TIMMING1(DDR_ID, PARA, VALUE) { DDR_ID, sizeof(ddr_set_t )+DDR_TIMMING_OFFSET(PARA), VALUE, DDR_TIMMING_OFFSET_SIZE(PARA), 0, DDR_RESV_CHECK_ID_ENABLE }
+ bl2_reg_t __bl2_reg[] __attribute__ ((section(".generic_param"))) = {
+ 		{ 0, 0, 0xffffffff, 0, 0, 0 },
++
++		DDR_TIMMING_TUNE_TIMMING0
++			(DDR0_2G_DDR1_1G_DDR_ID,
++			dram_ch0_size_MB,
++			(DRAM_SIZE_ID_256MBX4 << CONFIG_CS0_BYTE_01_SIZE_256_ID_OFFSET) +
++			(DRAM_SIZE_ID_256MBX4 << CONFIG_CS0_BYTE_23_SIZE_256_ID_OFFSET) +
++			(DRAM_SIZE_ID_256MBX0 << CONFIG_CS1_BYTE_01_SIZE_256_ID_OFFSET) +
++			(DRAM_SIZE_ID_256MBX0 << CONFIG_CS1_BYTE_23_SIZE_256_ID_OFFSET)),
++
++		DDR_TIMMING_TUNE_TIMMING1
++				(DDR0_2G_DDR1_1G_DDR_ID,
++				dram_ch1_size_MB,
++				(DRAM_SIZE_ID_256MBX2 << CONFIG_CS0_BYTE_01_SIZE_256_ID_OFFSET) +
++				(DRAM_SIZE_ID_256MBX2 << CONFIG_CS0_BYTE_23_SIZE_256_ID_OFFSET) +
++				(DRAM_SIZE_ID_256MBX0 << CONFIG_CS1_BYTE_01_SIZE_256_ID_OFFSET) +
++				(DRAM_SIZE_ID_256MBX0 << CONFIG_CS1_BYTE_23_SIZE_256_ID_OFFSET)),
++
++		DDR_TIMMING_TUNE_TIMMING0
++				(DDR0_2G_DDR1_2G_DDR_ID,
++				dram_ch0_size_MB,
++				(DRAM_SIZE_ID_256MBX4 << CONFIG_CS0_BYTE_01_SIZE_256_ID_OFFSET) +
++				(DRAM_SIZE_ID_256MBX4 << CONFIG_CS0_BYTE_23_SIZE_256_ID_OFFSET) +
++				(DRAM_SIZE_ID_256MBX0 << CONFIG_CS1_BYTE_01_SIZE_256_ID_OFFSET) +
++				(DRAM_SIZE_ID_256MBX0 << CONFIG_CS1_BYTE_23_SIZE_256_ID_OFFSET)),
++
++		DDR_TIMMING_TUNE_TIMMING1
++				(DDR0_2G_DDR1_2G_DDR_ID,
++				dram_ch1_size_MB,
++				(DRAM_SIZE_ID_256MBX4 << CONFIG_CS0_BYTE_01_SIZE_256_ID_OFFSET) +
++				(DRAM_SIZE_ID_256MBX4 << CONFIG_CS0_BYTE_23_SIZE_256_ID_OFFSET) +
++				(DRAM_SIZE_ID_256MBX0 << CONFIG_CS1_BYTE_01_SIZE_256_ID_OFFSET) +
++				(DRAM_SIZE_ID_256MBX0 << CONFIG_CS1_BYTE_23_SIZE_256_ID_OFFSET)),
++
++		DDR_TIMMING_TUNE_TIMMING0
++				(DDR0_3G_DDR1_3G_RANK01_DDR_ID,
++				dram_ch0_size_MB,
++				(DRAM_SIZE_ID_256MBX3 << CONFIG_CS0_BYTE_01_SIZE_256_ID_OFFSET) +
++				(DRAM_SIZE_ID_256MBX3 << CONFIG_CS0_BYTE_23_SIZE_256_ID_OFFSET) +
++				(DRAM_SIZE_ID_256MBX3 << CONFIG_CS1_BYTE_01_SIZE_256_ID_OFFSET) +
++				(DRAM_SIZE_ID_256MBX3 << CONFIG_CS1_BYTE_23_SIZE_256_ID_OFFSET)),
++
++		DDR_TIMMING_TUNE_TIMMING1
++				(DDR0_3G_DDR1_3G_RANK01_DDR_ID,
++				dram_ch1_size_MB,
++				(DRAM_SIZE_ID_256MBX3 << CONFIG_CS0_BYTE_01_SIZE_256_ID_OFFSET) +
++				(DRAM_SIZE_ID_256MBX3 << CONFIG_CS0_BYTE_23_SIZE_256_ID_OFFSET) +
++				(DRAM_SIZE_ID_256MBX3 << CONFIG_CS1_BYTE_01_SIZE_256_ID_OFFSET) +
++				(DRAM_SIZE_ID_256MBX3 << CONFIG_CS1_BYTE_23_SIZE_256_ID_OFFSET)),
++
++		DDR_TIMMING_TUNE_TIMMING0
++				(DDR0_3G_DDR1_3G_RANK01_DDR_ID,
++				DisabledDbyte[0],
++				0x00),
++
++		DDR_TIMMING_TUNE_TIMMING0
++				(DDR0_3G_DDR1_3G_RANK01_DDR_ID,
++				DisabledDbyte[1],
++				0x00),
++
++		DDR_TIMMING_TUNE_TIMMING1
++				(DDR0_3G_DDR1_3G_RANK01_DDR_ID,
++				DisabledDbyte[0],
++				0x00),
++
++		DDR_TIMMING_TUNE_TIMMING1
++				(DDR0_3G_DDR1_3G_RANK01_DDR_ID,
++				DisabledDbyte[1],
++				0x00),
++
++		DDR_TIMMING_TUNE_TIMMING0
++				(DDR0_4G_DDR1_4G_RANK01_DDR_ID,
++				dram_ch0_size_MB,
++				(DRAM_SIZE_ID_256MBX4 << CONFIG_CS0_BYTE_01_SIZE_256_ID_OFFSET) +
++				(DRAM_SIZE_ID_256MBX4 << CONFIG_CS0_BYTE_23_SIZE_256_ID_OFFSET) +
++				(DRAM_SIZE_ID_256MBX4 << CONFIG_CS1_BYTE_01_SIZE_256_ID_OFFSET) +
++				(DRAM_SIZE_ID_256MBX4 << CONFIG_CS1_BYTE_23_SIZE_256_ID_OFFSET)),
++
++		DDR_TIMMING_TUNE_TIMMING1
++				(DDR0_4G_DDR1_4G_RANK01_DDR_ID,
++				dram_ch1_size_MB,
++				(DRAM_SIZE_ID_256MBX4 << CONFIG_CS0_BYTE_01_SIZE_256_ID_OFFSET) +
++				(DRAM_SIZE_ID_256MBX4 << CONFIG_CS0_BYTE_23_SIZE_256_ID_OFFSET) +
++				(DRAM_SIZE_ID_256MBX4 << CONFIG_CS1_BYTE_01_SIZE_256_ID_OFFSET) +
++				(DRAM_SIZE_ID_256MBX4 << CONFIG_CS1_BYTE_23_SIZE_256_ID_OFFSET)),
++
++		DDR_TIMMING_TUNE_TIMMING0
++				(DDR0_4G_DDR1_4G_RANK01_DDR_ID,
++				DRAMFreq[0],
++				1848),
++
++		DDR_TIMMING_TUNE_TIMMING1
++				(DDR0_4G_DDR1_4G_RANK01_DDR_ID,
++				DRAMFreq[0],
++				1848),
++
++		DDR_TIMMING_TUNE_TIMMING0
++				(DDR0_4G_DDR1_4G_RANK01_DDR_ID,
++				cfg_ddr_training_delay_ps[0].dram_bit_vref[0],
++				0x8),
++
++		DDR_TIMMING_TUNE_TIMMING1
++				(DDR0_4G_DDR1_4G_RANK01_DDR_ID,
++				cfg_ddr_training_delay_ps[0].dram_bit_vref[0],
++				0x8),
++
++		DDR_TIMMING_TUNE_TIMMING0
++				(DDR0_4G_DDR1_4G_RANK01_DDR_ID,
++				dram_data_odt_ohm,
++				60),
++
++		DDR_TIMMING_TUNE_TIMMING1
++				(DDR0_4G_DDR1_4G_RANK01_DDR_ID,
++				dram_data_odt_ohm,
++				60),
++
++		DDR_TIMMING_TUNE_TIMMING0
++				(DDR0_4G_DDR1_4G_RANK01_DDR_ID,
++				training_offset,
++				((0x1 << 7) | (2 << 4))),
++
++		DDR_TIMMING_TUNE_TIMMING1
++				(DDR0_4G_DDR1_4G_RANK01_DDR_ID,
++				training_offset,
++				((0x1 << 7) | (3 << 4))),
++
++		DDR_TIMMING_TUNE_TIMMING0
++				(DDR0_4G_DDR1_4G_RANK01_DDR_ID,
++				DisabledDbyte[0],
++				0x00),
++
++		DDR_TIMMING_TUNE_TIMMING0
++				(DDR0_4G_DDR1_4G_RANK01_DDR_ID,
++				DisabledDbyte[1],
++				0x00),
++
++		DDR_TIMMING_TUNE_TIMMING1
++				(DDR0_4G_DDR1_4G_RANK01_DDR_ID,
++				DisabledDbyte[0],
++				0x00),
++
++		DDR_TIMMING_TUNE_TIMMING1
++				(DDR0_4G_DDR1_4G_RANK01_DDR_ID,
++				DisabledDbyte[1],
++				0x00)
+ };
+ 
+ /* for PWM use */
+-- 
+2.56.0
+

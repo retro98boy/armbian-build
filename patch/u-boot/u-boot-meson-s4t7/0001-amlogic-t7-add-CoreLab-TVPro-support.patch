@@ -1,14 +1,60 @@
-Subject: [PATCH] board: add AOC 65T33Z for Armbian edge
+From de509b2ebc136a28ea943d0e6ac1e1d9824640c5 Mon Sep 17 00:00:00 2001
+From: retro98boy <retro98boy@qq.com>
+Date: Tue, 17 Nov 2026 11:02:13 +0800
+Subject: [PATCH 1/3] amlogic t7: add CoreLab TVPro support
 
-Import board, DDR and BL30 support from khadas-u-boot f44ace43c4f.
-Original board support: retro98boy <retro98boy@qq.com>.
-Apply after add-corelab-tvpro.patch.
+Based on commit `a7b06ca0498f2da0faf14e75148b5075c84d7381 (Commits on Mar 25, 2026)` from the `khadas-vims-v2019.01-mainline` branch of [khadas/u-boot](https://github.com/khadas/u-boot), copied from the KVIM4 files and modified accordingly.
 
-diff --git a/arch/arm/dts/65t33z.dts b/arch/arm/dts/65t33z.dts
+The DDR configuration only supports 8 GB.
+
+Change-Id: Ia796c039d8e9f5f57de04d28568829e4df1b47b7
+---
+ arch/arm/dts/tvpro.dts                        |  215 ++++
+ .../amlogic/n200/t7/tvpro/FreeRTOSConfig.h    |  127 ++
+ .../demos/amlogic/n200/t7/tvpro/Makefile      |  146 +++
+ .../demos/amlogic/n200/t7/tvpro/config.mk     |   36 +
+ .../demos/amlogic/n200/t7/tvpro/keypad.c      |   75 ++
+ .../demos/amlogic/n200/t7/tvpro/lscript.h     |    7 +
+ .../src_ao/demos/amlogic/n200/t7/tvpro/main.c |  247 ++++
+ .../demos/amlogic/n200/t7/tvpro/power.c       |  269 ++++
+ .../demos/amlogic/n200/t7/tvpro/power.h       |   32 +
+ .../amlogic/n200/t7/tvpro/save_version.h      |    9 +
+ bl33z/Makefile                                |    3 +
+ board/khadas/Kconfig                          |    9 +
+ board/khadas/configs/tvpro.h                  |  610 +++++++++
+ board/khadas/defconfigs/tvpro_defconfig       |  138 ++
+ board/khadas/tvpro/Kconfig                    |   32 +
+ board/khadas/tvpro/Makefile                   |    3 +
+ board/khadas/tvpro/firmware/timing.c          | 1143 +++++++++++++++++
+ board/khadas/tvpro/fw_arb.cfg                 |   16 +
+ board/khadas/tvpro/lcd.c                      |  642 +++++++++
+ board/khadas/tvpro/tvpro.c                    |  587 +++++++++
+ 20 files changed, 4346 insertions(+)
+ create mode 100644 arch/arm/dts/tvpro.dts
+ create mode 100644 bl30/src_ao/demos/amlogic/n200/t7/tvpro/FreeRTOSConfig.h
+ create mode 100644 bl30/src_ao/demos/amlogic/n200/t7/tvpro/Makefile
+ create mode 100644 bl30/src_ao/demos/amlogic/n200/t7/tvpro/config.mk
+ create mode 100644 bl30/src_ao/demos/amlogic/n200/t7/tvpro/keypad.c
+ create mode 100644 bl30/src_ao/demos/amlogic/n200/t7/tvpro/lscript.h
+ create mode 100644 bl30/src_ao/demos/amlogic/n200/t7/tvpro/main.c
+ create mode 100644 bl30/src_ao/demos/amlogic/n200/t7/tvpro/power.c
+ create mode 100644 bl30/src_ao/demos/amlogic/n200/t7/tvpro/power.h
+ create mode 100644 bl30/src_ao/demos/amlogic/n200/t7/tvpro/save_version.h
+ create mode 100644 board/khadas/configs/tvpro.h
+ create mode 100644 board/khadas/defconfigs/tvpro_defconfig
+ create mode 100644 board/khadas/tvpro/Kconfig
+ create mode 100644 board/khadas/tvpro/Makefile
+ create mode 100644 board/khadas/tvpro/firmware/timing.c
+ create mode 100644 board/khadas/tvpro/fw_arb.cfg
+ create mode 100644 board/khadas/tvpro/lcd.c
+ create mode 100644 board/khadas/tvpro/tvpro.c
+
+diff --git a/arch/arm/dts/tvpro.dts b/arch/arm/dts/tvpro.dts
 new file mode 100644
+index 00000000000..19e999909e8
 --- /dev/null
-+++ b/arch/arm/dts/65t33z.dts
-@@ -0,0 +1,175 @@
++++ b/arch/arm/dts/tvpro.dts
+@@ -0,0 +1,215 @@
 +// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
 +/*
 + * Copyright (c) 2021 Nick <nick@khadas.com>.
@@ -20,8 +66,8 @@ new file mode 100644
 +#include "khadas-ts050-panel.dtsi"
 +
 +/ {
-+	compatible = "aoc,65t33z","amlogic,t7-an400-lpddr4x", "amlogic,t7-txxx", "amlogic,meson-t7";
-+	model = "AOC 65T33Z";
++	compatible = "corelab,tvpro","amlogic,t7-an400-lpddr4x", "amlogic,t7-txxx", "amlogic,meson-t7";
++	model = "CoreLab TVPro";
 +
 +	aliases {
 +		serial0 = &uart_a;
@@ -73,6 +119,18 @@ new file mode 100644
 +		regulator-max-microvolt = <3300000>;
 +	};
 +
++	sd_3v3: regulator-sd_3v3 {
++		compatible = "regulator-fixed";
++		regulator-name = "SD_3V3";
++		regulator-min-microvolt = <3300000>;
++		regulator-max-microvolt = <3300000>;
++
++		gpio = <&gpio GPIOD_11 GPIO_ACTIVE_LOW>;
++		startup-delay-us = <100000>;
++		u-boot,off-on-delay-us = <100000>;
++		enable-active-low;
++	};
++
 +	emmc_pwrseq: emmc-pwrseq {
 +		compatible = "mmc-pwrseq-emmc";
 +		/* reset-gpios = <&gpio BOOT_12 GPIO_ACTIVE_LOW>; */
@@ -113,6 +171,32 @@ new file mode 100644
 +	enc_idx = <2>; /* value can be 0 or 2 */
 +};
 +
++/* SD card */
++&sd_emmc_b {
++	status = "okay";
++	pinctrl-0 = <&sdcard_pins>;
++	pinctrl-1 = <&sdcard_pins &to_sduart_pins>;
++	pinctrl-names = "sd_all_pins", "sd_uart";
++
++	bus-width = <4>;
++	cap-sd-highspeed;
++	max-frequency = <100000000>;
++	disable-wp;
++
++	cd-gpios = <&gpio GPIOC_6 GPIO_ACTIVE_HIGH>;
++	cd-inverted;
++
++	card_type = <5>;
++
++	init_co_phase = <2>;
++	init_tx_phase = <0>;
++
++	sd_hs_co_phase = <2>;
++	sd_hs_tx_phase = <0>;
++
++	vmmc-supply = <&sd_3v3>;
++};
++
 +/* eMMC */
 +&sd_emmc_c {
 +	status = "okay";
@@ -137,7 +221,7 @@ new file mode 100644
 +	hs2_co_phase = <2>;
 +	hs2_to_phase = <0>;
 +
-+	hw_reset = <&gpio GPIOB_9 GPIO_ACTIVE_HIGH>;
++	hw_reset = <&gpio GPIOB_12 GPIO_ACTIVE_HIGH>;
 +
 +	mmc-pwrseq = <&emmc_pwrseq>;
 +	vmmc-supply = <&vcc_3v3>;
@@ -162,6 +246,8 @@ new file mode 100644
 +&usb3_phy_v2 {
 +	status = "okay";
 +	portnum = <0>;
++	gpio-vbus-power = "GPIOH_4";
++	gpios = <&gpio GPIOH_4 GPIO_ACTIVE_HIGH>;
 +};
 +
 +&usb2_phy2_v2 {
@@ -171,23 +257,24 @@ new file mode 100644
 +
 +/*
 + * Do not turn on USB OTG power supply,
-+ * because it is used for image burning.
++ * because it is used for image burning via A to A cable.
 + */
 +&usb3_phy2_v2 {
 +	status = "okay";
 +	portnum = <0>;
-+	/* gpio-vbus-power = "GPIOY_16"; */
-+	/* gpios = <&gpio GPIOY_16 GPIO_ACTIVE_HIGH>; */
++	/* gpio-vbus-power = "GPIOH_5"; */
++	/* gpios = <&gpio GPIOH_5 GPIO_ACTIVE_HIGH>; */
 +};
 +
 +/* Debug */
 +&uart_a {
 +	status = "okay";
 +};
-diff --git a/bl30/src_ao/demos/amlogic/n200/t7/65t33z/FreeRTOSConfig.h b/bl30/src_ao/demos/amlogic/n200/t7/65t33z/FreeRTOSConfig.h
+diff --git a/bl30/src_ao/demos/amlogic/n200/t7/tvpro/FreeRTOSConfig.h b/bl30/src_ao/demos/amlogic/n200/t7/tvpro/FreeRTOSConfig.h
 new file mode 100644
+index 00000000000..18b54e7f0dd
 --- /dev/null
-+++ b/bl30/src_ao/demos/amlogic/n200/t7/65t33z/FreeRTOSConfig.h
++++ b/bl30/src_ao/demos/amlogic/n200/t7/tvpro/FreeRTOSConfig.h
 @@ -0,0 +1,127 @@
 +/*
 + * Copyright (C) 2014-2018 Amlogic, Inc. All rights reserved.
@@ -316,10 +403,11 @@ new file mode 100644
 +/* A header file that defines trace macro can be included here. */
 +
 +#endif /* FREERTOS_CONFIG_H */
-diff --git a/bl30/src_ao/demos/amlogic/n200/t7/65t33z/Makefile b/bl30/src_ao/demos/amlogic/n200/t7/65t33z/Makefile
+diff --git a/bl30/src_ao/demos/amlogic/n200/t7/tvpro/Makefile b/bl30/src_ao/demos/amlogic/n200/t7/tvpro/Makefile
 new file mode 100644
+index 00000000000..3efbb6077da
 --- /dev/null
-+++ b/bl30/src_ao/demos/amlogic/n200/t7/65t33z/Makefile
++++ b/bl30/src_ao/demos/amlogic/n200/t7/tvpro/Makefile
 @@ -0,0 +1,146 @@
 +#
 +#  Copyright (C) 2014-2018 Amlogic, Inc. All rights reserved.
@@ -467,10 +555,11 @@ new file mode 100644
 +
 +
 +-include $(wildcard $(COMPILER)/*.d)
-diff --git a/bl30/src_ao/demos/amlogic/n200/t7/65t33z/config.mk b/bl30/src_ao/demos/amlogic/n200/t7/65t33z/config.mk
+diff --git a/bl30/src_ao/demos/amlogic/n200/t7/tvpro/config.mk b/bl30/src_ao/demos/amlogic/n200/t7/tvpro/config.mk
 new file mode 100644
+index 00000000000..8c9787cc789
 --- /dev/null
-+++ b/bl30/src_ao/demos/amlogic/n200/t7/65t33z/config.mk
++++ b/bl30/src_ao/demos/amlogic/n200/t7/tvpro/config.mk
 @@ -0,0 +1,36 @@
 +#
 +#  Copyright (C) 2014-2018 Amlogic, Inc. All rights reserved.
@@ -499,7 +588,7 @@ new file mode 100644
 +#
 +SOC=t7
 +ARCH_CPU=RISC_V_N205
-+BOARD=65t33z
++BOARD=tvpro
 +
 +#config bt wakeup interrupt sampling
 +#BT_WAKE_CFG: 1 power and netflix key low level sampling
@@ -508,10 +597,11 @@ new file mode 100644
 +#config wifi wakeup interrupt sampling
 +#WIFI_WAKE_CFG: 1
 +#CFLAGS += -DWIFI_WAKE_CFG=1 -DWIFI_WAKE_HOST=GPIOX_7 -DWIFI_PWREN=GPIOX_6
-diff --git a/bl30/src_ao/demos/amlogic/n200/t7/65t33z/keypad.c b/bl30/src_ao/demos/amlogic/n200/t7/65t33z/keypad.c
+diff --git a/bl30/src_ao/demos/amlogic/n200/t7/tvpro/keypad.c b/bl30/src_ao/demos/amlogic/n200/t7/tvpro/keypad.c
 new file mode 100644
+index 00000000000..b80ad850ff6
 --- /dev/null
-+++ b/bl30/src_ao/demos/amlogic/n200/t7/65t33z/keypad.c
++++ b/bl30/src_ao/demos/amlogic/n200/t7/tvpro/keypad.c
 @@ -0,0 +1,75 @@
 +#include <string.h>
 +#include "FreeRTOS.h"
@@ -588,10 +678,11 @@ new file mode 100644
 +	vGpioKeyDisable();
 +	vDestroyGpioKey();
 +}
-diff --git a/bl30/src_ao/demos/amlogic/n200/t7/65t33z/lscript.h b/bl30/src_ao/demos/amlogic/n200/t7/65t33z/lscript.h
+diff --git a/bl30/src_ao/demos/amlogic/n200/t7/tvpro/lscript.h b/bl30/src_ao/demos/amlogic/n200/t7/tvpro/lscript.h
 new file mode 100644
+index 00000000000..796988a8fc7
 --- /dev/null
-+++ b/bl30/src_ao/demos/amlogic/n200/t7/65t33z/lscript.h
++++ b/bl30/src_ao/demos/amlogic/n200/t7/tvpro/lscript.h
 @@ -0,0 +1,7 @@
 +#ifndef _LSCRIPT_H_
 +#define _LSCRIPT_H_
@@ -600,10 +691,11 @@ new file mode 100644
 +#define configMEM_LEN		(64 * 1024)
 +
 +#endif
-diff --git a/bl30/src_ao/demos/amlogic/n200/t7/65t33z/main.c b/bl30/src_ao/demos/amlogic/n200/t7/65t33z/main.c
+diff --git a/bl30/src_ao/demos/amlogic/n200/t7/tvpro/main.c b/bl30/src_ao/demos/amlogic/n200/t7/tvpro/main.c
 new file mode 100644
+index 00000000000..4d109f03fea
 --- /dev/null
-+++ b/bl30/src_ao/demos/amlogic/n200/t7/65t33z/main.c
++++ b/bl30/src_ao/demos/amlogic/n200/t7/tvpro/main.c
 @@ -0,0 +1,247 @@
 +/*
 + * Copyright (C) 2014-2018 Amlogic, Inc. All rights reserved.
@@ -852,11 +944,12 @@ new file mode 100644
 +    for ( ;; );
 +}
 +/*-----------------------------------------------------------*/
-diff --git a/bl30/src_ao/demos/amlogic/n200/t7/65t33z/power.c b/bl30/src_ao/demos/amlogic/n200/t7/65t33z/power.c
+diff --git a/bl30/src_ao/demos/amlogic/n200/t7/tvpro/power.c b/bl30/src_ao/demos/amlogic/n200/t7/tvpro/power.c
 new file mode 100644
+index 00000000000..93e3fc47dd6
 --- /dev/null
-+++ b/bl30/src_ao/demos/amlogic/n200/t7/65t33z/power.c
-@@ -0,0 +1,268 @@
++++ b/bl30/src_ao/demos/amlogic/n200/t7/tvpro/power.c
+@@ -0,0 +1,269 @@
 +/*
 + * Copyright (C) 2014-2018 Amlogic, Inc. All rights reserved.
 + *
@@ -1125,11 +1218,13 @@ new file mode 100644
 +		return;
 +	}
 +}
-diff --git a/bl30/src_ao/demos/amlogic/n200/t7/65t33z/power.h b/bl30/src_ao/demos/amlogic/n200/t7/65t33z/power.h
++
+diff --git a/bl30/src_ao/demos/amlogic/n200/t7/tvpro/power.h b/bl30/src_ao/demos/amlogic/n200/t7/tvpro/power.h
 new file mode 100644
+index 00000000000..97001b094fc
 --- /dev/null
-+++ b/bl30/src_ao/demos/amlogic/n200/t7/65t33z/power.h
-@@ -0,0 +1,31 @@
++++ b/bl30/src_ao/demos/amlogic/n200/t7/tvpro/power.h
+@@ -0,0 +1,32 @@
 +/*
 + * Copyright (C) 2014-2018 Amlogic, Inc. All rights reserved.
 + *
@@ -1161,11 +1256,13 @@ new file mode 100644
 +extern void str_hw_disable(void);
 +extern void str_power_on(int shutdown_flag);
 +extern void str_power_off(int shutdown_flag);
-diff --git a/bl30/src_ao/demos/amlogic/n200/t7/65t33z/save_version.h b/bl30/src_ao/demos/amlogic/n200/t7/65t33z/save_version.h
++
+diff --git a/bl30/src_ao/demos/amlogic/n200/t7/tvpro/save_version.h b/bl30/src_ao/demos/amlogic/n200/t7/tvpro/save_version.h
 new file mode 100644
+index 00000000000..4da07026290
 --- /dev/null
-+++ b/bl30/src_ao/demos/amlogic/n200/t7/65t33z/save_version.h
-@@ -0,0 +1,8 @@
++++ b/bl30/src_ao/demos/amlogic/n200/t7/tvpro/save_version.h
+@@ -0,0 +1,9 @@
 +#ifndef __SAVE_VERSION_H__
 +#define __SAVE_VERSION_H__
 +
@@ -1174,592 +1271,821 @@ new file mode 100644
 +#define BL2E_VER_BUFF_SIZE		(0x400)
 +
 +#endif /* __SAVE_VERSION_H__ */
-diff --git a/board/khadas/65t33z/65t33z.c b/board/khadas/65t33z/65t33z.c
++
+diff --git a/bl33z/Makefile b/bl33z/Makefile
+index 6998e6b30aa..1918aadb29a 100644
+--- a/bl33z/Makefile
++++ b/bl33z/Makefile
+@@ -87,6 +87,9 @@ SOC		=	$(shell echo ${PLAT} | cut -d '_' -f 1)
+ ifeq ($(SOC),kvim4)
+ SOC     =   t7
+ endif
++ifeq ($(SOC),tvpro)
++SOC     =   t7
++endif
+ ifeq ($(SOC),kvim1s)
+ SOC     =   s4
+ endif
+diff --git a/board/khadas/Kconfig b/board/khadas/Kconfig
+index 50e5a35666d..1628a34d8e0 100755
+--- a/board/khadas/Kconfig
++++ b/board/khadas/Kconfig
+@@ -235,6 +235,10 @@ config BL30_SELECT
+ choice
+ 	prompt "T7 Board"
+ 
++config CORELAB_TVPRO
++	bool "CoreLab TVPro"
++	select TARGET_CORELAB_TVPRO
++
+ config KHADAS_VIM4
+ 	bool "Khadas VIM4"
+ 	select TARGET_KHADAS_VIM4
+@@ -243,6 +247,10 @@ config KHADAS_VIM4
+ 
+ endchoice
+ 
++config TARGET_CORELAB_TVPRO
++	bool "CoreLab TVPro board"
++	depends on CORELAB_TVPRO
++
+ config TARGET_KHADAS_VIM4
+ 	bool "Khadas VIM4 board"
+ 	depends on KHADAS_VIM4
+@@ -293,5 +301,6 @@ endif
+ 
+ # Khadas boards
+ 
++source "board/khadas/tvpro/Kconfig"
+ source "board/khadas/kvim4/Kconfig"
+ source "board/khadas/kvim1s/Kconfig"
+diff --git a/board/khadas/configs/tvpro.h b/board/khadas/configs/tvpro.h
 new file mode 100644
+index 00000000000..88b21c6ccb1
 --- /dev/null
-+++ b/board/khadas/65t33z/65t33z.c
-@@ -0,0 +1,575 @@
-+// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
++++ b/board/khadas/configs/tvpro.h
+@@ -0,0 +1,610 @@
++/* SPDX-License-Identifier: (GPL-2.0+ OR MIT) */
 +/*
 + * Copyright (c) 2022 Wesion, Inc. All rights reserved.
 + */
-+#include <common.h>
-+#include <asm/io.h>
-+#include <malloc.h>
-+#include <errno.h>
-+#include <environment.h>
-+#include <fdt_support.h>
-+#include <linux/libfdt.h>
-+#include <amlogic/cpu_id.h>
-+#include <asm/arch/secure_apb.h>
-+#include <asm/arch/pinctrl_init.h>
-+#include <linux/sizes.h>
-+#include <asm-generic/gpio.h>
-+#include <dm.h>
-+#include <asm/armv8/mmu.h>
-+#include <amlogic/aml_v3_burning.h>
-+#include <amlogic/aml_v2_burning.h>
-+#include <linux/mtd/partitions.h>
-+#include <asm/arch/bl31_apis.h>
-+#include <asm/arch/stick_mem.h>
-+#include <i2c.h>
-+#ifdef CONFIG_AML_VPU
-+#include <amlogic/media/vpu/vpu.h>
++
++#ifndef __BOARD_CFG_H__
++#define __BOARD_CFG_H__
++
++#include <asm/arch/cpu.h>
++#include <amlogic/base_env.h>
++
++/*
++ * platform power init config
++ */
++
++#define AML_VCCK_A_INIT_VOLTAGE      1009       // VCCK A power up voltage
++#define AML_VCCK_B_INIT_VOLTAGE      1009       // VCCK B power up voltage
++#define AML_VDDEE_INIT_VOLTAGE       830       // VDDEE power up voltage
++#define AML_VDDGPU_INIT_VOLTAGE      830       // VDDGPU power up voltage
++#define AML_VDDNPU_INIT_VOLTAGE      830       // VDDNPU power up voltage
++#define AML_VDDDDR_INIT_VOLTAGE      830       // VDDDDR power up voltage
++/*Distinguish whether to use efuse to adjust vddee*/
++#define CONFIG_PDVFS_ENABLE
++
++/* SMP Definitions */
++#define CPU_RELEASE_ADDR        secondary_boot_func
++
++/* Bootloader Control Block function
++   That is used for recovery and the bootloader to talk to each other
++  */
++#if 0
++#define CONFIG_BOOTLOADER_CONTROL_BLOCK
 +#endif
-+#ifdef CONFIG_AML_VPP
-+#include <amlogic/media/vpp/vpp.h>
++
++/* Serial config */
++#define CONFIG_CONS_INDEX 2
++#define CONFIG_BAUDRATE  115200
++
++/* AVB */
++#define CONFIG_AML_AVB2_ANTIROLLBACK 1
++#define CONFIG_AVB_VERIFY 1
++#define CONFIG_SUPPORT_EMMC_RPMB 1
++#define CONFIG_AML_DEV_ID 1
++
++/*low console baudrate*/
++#define CONFIG_LOW_CONSOLE_BAUD            0
++
++/* Enable ir remote wake up for bl30 */
++#define AML_IR_REMOTE_POWER_UP_KEY_VAL1 0xef10fe01 //amlogic tv ir --- power
++#define AML_IR_REMOTE_POWER_UP_KEY_VAL2 0XBB44FB04 //amlogic tv ir --- ch+
++#define AML_IR_REMOTE_POWER_UP_KEY_VAL3 0xF20DFE01 //amlogic tv ir --- ch-
++#define AML_IR_REMOTE_POWER_UP_KEY_VAL4 0XBA45BD02 //amlogic small ir--- power
++#define AML_IR_REMOTE_POWER_UP_KEY_VAL5 0xe51afb04
++#define AML_IR_REMOTE_POWER_UP_KEY_VAL6 0xFFFFFFFF
++#define AML_IR_REMOTE_POWER_UP_KEY_VAL7 0xFFFFFFFF
++#define AML_IR_REMOTE_POWER_UP_KEY_VAL8 0xFFFFFFFF
++#define AML_IR_REMOTE_POWER_UP_KEY_VAL9 0xFFFFFFFF
++
++/*config the default parameters for adc power key*/
++#define AML_ADC_POWER_KEY_CHAN   2  /*channel range: 0-7*/
++#define AML_ADC_POWER_KEY_VAL    0  /*sample value range: 0-1023*/
++
++//#define CONFIG_BOOTLOADER_CONTROL_BLOCK
++
++#ifdef CONFIG_DTB_LOAD
++#undef CONFIG_DTB_LOAD
 +#endif
-+#ifdef CONFIG_AML_VOUT
-+#include <amlogic/media/vout/aml_vout.h>
-+#endif
-+#ifdef CONFIG_AML_HDMITX21
-+#include <amlogic/media/vout/hdmitx21/hdmitx_module.h>
-+#endif
-+#ifdef CONFIG_AML_LCD
-+#include <amlogic/media/vout/lcd/lcd_vout.h>
-+#endif
-+#ifdef CONFIG_RX_RTERM
-+#include <amlogic/aml_hdmirx.h>
-+#endif
-+#include <amlogic/storage.h>
-+#ifdef CONFIG_CMD_SND
-+#include "amlogic/auge_sound.h"
-+#endif
-+#include <amlogic/board.h>
 +
-+
-+DECLARE_GLOBAL_DATA_PTR;
-+
-+void sys_led_init(void)
-+{
-+}
-+
-+int serial_set_pin_port(unsigned long port_base)
-+{
-+    return 0;
-+}
-+
-+int dram_init(void)
-+{
-+	gd->ram_size = PHYS_SDRAM_1_SIZE;
-+	return 0;
-+}
-+
-+/* secondary_boot_func
-+ * this function should be write with asm, here, is is only for compiling pass
-+ * */
-+void secondary_boot_func(void)
-+{
-+}
-+
-+int board_eth_init(bd_t *bis)
-+{
-+	return 0;
-+}
-+
-+int active_clk(void)
-+{
-+	struct udevice *clk = NULL;
-+	int err;
-+
-+	err = uclass_get_device_by_name(UCLASS_CLK,
-+			"xtal-clk", &clk);
-+	if (err) {
-+		pr_err("Can't find xtal-clk clock (%d)\n", err);
-+		return err;
-+	}
-+	err = uclass_get_device_by_name(UCLASS_CLK,
-+			"clock-controller@0", &clk);
-+	if (err) {
-+		pr_err("Can't find clock-controller@0 clock (%d)\n", err);
-+		return err;
-+	}
-+
-+	return 0;
-+}
-+
-+#ifdef CONFIG_AML_LCD
-+
-+void board_lcd_detect(void)
-+{
-+	int ret = 0;
-+	int res = 0;
-+	u8 value = 0;
-+	uchar linebuf[1];
-+	struct udevice *bus;
-+	struct udevice *dev;
-+
-+	uclass_get_device_by_seq(UCLASS_I2C, 3, &bus);
-+	ret = i2c_get_chip(bus, 0x38, 1, &dev);
-+	if (!ret) {
-+		res = dm_i2c_read(dev, 0xA8, linebuf, 1);
-+		if (!res) {
-+			printf("TP05 id=0x%x\n", linebuf[0]);
-+			if (linebuf[0] == 0x51) {//old ts050
-+				env_set("panel_type", "mipi_0");
-+				value = 1;
-+				printf("panel_type : mipi_0\n");
-+			} else if (linebuf[0] == 0x79) {//new ts050
-+				env_set("panel_type", "mipi_2");
-+				value = 1;
-+				printf("panel_type : mipi_2\n");
-+			}
-+		}
-+	}
-+	if (ret || res) {
-+		ret = i2c_get_chip(bus, 0x14, 1, &dev);
-+		if (!ret) {
-+			res = dm_i2c_read(dev, 0x9e, linebuf, 1);
-+			if (!res) {
-+				printf("TP10 id=0x%x\n", linebuf[0]);
-+				if (linebuf[0] == 0x00) {//TS101
-+					env_set("panel_type", "mipi_1");
-+					value = 1;
-+					printf("panel_type : mipi_1\n");
-+				}
-+			}
-+		}
-+	}
-+
-+	env_set_ulong("mipi_lcd_exist", value);
-+	printf("mipi_lcd_exist : %d\n", value);
-+}
-+#endif /* CONFIG_AML_LCD */
-+
-+static void select_fdtfile(void)
-+{
-+	env_set("fdtfile", "amlogic/amlogic-t7-a311d2-aoc-65t33z-4g.dtb");
-+}
-+
-+
-+#ifdef CONFIG_AML_HDMITX21
-+static void hdmitx_set_hdmi_5v(void)
-+{
-+}
-+#endif
-+void board_init_mem(void) {
-+	#if 1
-+	/* config bootm low size, make sure whole dram/psram space can be used */
-+	phys_size_t ram_size;
-+	char *env_tmp;
-+	env_tmp = env_get("bootm_size");
-+	if (!env_tmp) {
-+		ram_size = ((0x100000000 <= ((readl(SYSCTRL_SEC_STATUS_REG4) &
-+				0xFFFFFFFF0000) << 4)) ? 0xe0000000 :
-+					(((readl(SYSCTRL_SEC_STATUS_REG4)) &
-+					0xFFFFFFFF0000) << 4));
-+		env_set_hex("bootm_low", 0);
-+		env_set_hex("bootm_size", ram_size);
-+	}
-+	#endif
-+}
-+
-+int board_init(void)
-+{
-+	printf("board init\n");
-+
-+	/* The non-secure watchdog is enabled in BL2 TEE, disable it */
-+	run_command("watchdog off", 0);
-+	printf("watchdog disable\n");
-+
-+	aml_set_bootsequence(0);
-+	//Please keep try usb boot first in board_init, as other init before usb may cause burning failure
-+#if defined(CONFIG_AML_V3_FACTORY_BURN) && defined(CONFIG_AML_V3_USB_TOOl)
-+	if ((0x1b8ec003 != readl(SYSCTRL_SEC_STICKY_REG2)) && (0x1b8ec004 != readl(SYSCTRL_SEC_STICKY_REG2)))
-+	{ aml_v3_factory_usb_burning(0, gd->bd); }
-+#endif//#if defined(CONFIG_AML_V3_FACTORY_BURN) && defined(CONFIG_AML_V3_USB_TOOl)
-+
-+#if 0 //bypass below operations for pxp
-+	active_clk();
-+#endif
-+	pinctrl_devices_active(PIN_CONTROLLER_NUM);
-+
-+	/*
-+	 * Ensure that AMP_PWR is supplied with 12V voltage.
-+	 */
-+	/* Turn on Android USB power supply */
-+	run_command("gpio set GPIOT_23", 0);
-+	/* Turn on USB5744 (UU21) power supply */
-+	run_command("gpio set GPIOC_0", 0);
-+	/* Turn on USB5744 (UU1) power supply */
-+	run_command("gpio set GPIOC_1", 0);
-+
-+	return 0;
-+}
-+
-+
-+int board_late_init(void)
-+{
-+	// Set boot source
-+	board_set_boot_source();
-+
-+	printf("board late init\n");
-+	env_set("defenv_para", "-c -b0");
-+	aml_board_late_init_front(NULL);
-+	get_stick_reboot_flag_mbx();
-+
-+	/*
-+	 * Set the default value of mipi_lcd_exist to prevent
-+	 * the subsequent code from getting the value of mipi_lcd_exist as NULL,
-+	 * which may cause a crash
-+	 * eg: func do_edid in file cmd/amlogic/cmd_hdmitx21.c
-+	 */
-+	char *mipi_lcd_exist = NULL;
-+	mipi_lcd_exist = env_get("mipi_lcd_exist");
-+	if(!mipi_lcd_exist) {
-+		printf("env mipi_lcd_exist not found, set to 0 default\n");
-+		env_set("mipi_lcd_exist", "0");
-+	}
-+
-+	// Select fdtfile
-+	select_fdtfile();
-+#ifdef CONFIG_AML_VPU
-+	vpu_probe();
-+#endif
-+#ifdef CONFIG_AML_HDMITX21
-+	hdmitx_set_hdmi_5v();
-+	hdmitx21_chip_type_init(MESON_CPU_ID_T7);
-+	hdmitx21_init();
-+#endif
-+#ifdef CONFIG_CMD_SND
-+	/* Bandgap for HDMITX */
-+	writel(0x0b4242, ANACTRL_HDMIPHY_CTRL0);
-+	/* pinmux HDMITX_HPD_IN: GPIOW_15,  */
-+	update_bits(PADCTRL_PIN_MUX_REGN, 0xf << 28, 0x1 << 28);
-+	earcrx_init(EARC_RX_ANA_V2);
-+#endif
-+#ifdef CONFIG_AML_VPP
-+	vpp_init();
-+#endif
-+#ifdef CONFIG_RX_RTERM
-+	rx_set_phy_rterm();
-+#endif
-+#ifdef CONFIG_AML_VOUT
-+	vout_probe();
-+#endif
-+#ifdef CONFIG_AML_LCD
-+	board_lcd_detect();
-+	lcd_probe();
-+#endif
-+	/* The board id is used to determine if the NN needs to adjust voltage */
-+	switch (readl(SYSCTRL_SEC_STATUS_REG4) >> 8 & 0xff) {
-+	case 2:
-+		/* The NN needs to adjust the voltage */
-+		env_set_ulong("nn_adj_vol", 1);
-+		break;
-+	default:
-+		/* The NN does not need to adjust the voltage */
-+		env_set_ulong("nn_adj_vol", 0);
-+	}
-+
-+	aml_board_late_init_tail(NULL);
-+	return 0;
-+}
-+
-+phys_size_t get_effective_memsize(void)
-+{
-+	phys_size_t ddr_size;
-+
-+	// >>16 -> MB, <<20 -> real size, so >>16<<20 = <<4
-+#if defined(CONFIG_SYS_MEM_TOP_HIDE)
-+	ddr_size = (readl(SYSCTRL_SEC_STATUS_REG4) & ~0xffffUL) << 4;
-+	return (ddr_size - CONFIG_SYS_MEM_TOP_HIDE);
++#ifdef CONFIG_DTB_BIND_KERNEL    //load dtb from kernel, such as boot partition
++#define CONFIG_DTB_LOAD  "imgread dtb ${boot_part} ${dtb_mem_addr}"
 +#else
-+	ddr_size = (readl(SYSCTRL_SEC_STATUS_REG4) & ~0xffffUL) << 4;
-+	return ddr_size;
-+#endif /* CONFIG_SYS_MEM_TOP_HIDE */
++#define CONFIG_DTB_LOAD  "imgread dtb _aml_dtb ${dtb_mem_addr} || " \
++						 "if test ${boot_source} = emmc; then "\
++							"echo Load dtb/${fdtfile} from eMMC (1:1) ...;" \
++							"load mmc 1:1 ${dtb_mem_addr} dtb/${fdtfile};" \
++						 "else if test ${boot_source} = sd; then "\
++							"echo Load dtb/${fdtfile} from SD (0:1) ...;" \
++							"load mmc 0:1 ${dtb_mem_addr} dtb/${fdtfile};" \
++						 "fi;fi;"
++#endif//#ifdef CONFIG_DTB_BIND_KERNEL    //load dtb from kernel, such as boot partition
 +
-+}
++/* args/envs */
++#define CONFIG_SYS_MAXARGS  64
 +
-+phys_size_t get_ddr_info_size(void)
-+{
-+	phys_size_t ddr_size = (((readl(SYSCTRL_SEC_STATUS_REG4)) & ~0xffffUL) << 4);
-+
-+	return ddr_size;
-+}
-+
-+ulong board_get_usable_ram_top(ulong total_size)
-+{
-+	unsigned long top = gd->ram_top;
-+
-+	if (top >= 0xE0000000UL) {
-+		return 0xE0000000UL;
-+	}
-+	return top;
-+}
-+
-+static struct mm_region bd_mem_map[] = {
-+	{
-+		.virt = 0x00000000UL,
-+		.phys = 0x00000000UL,
-+		.size = 0x05100000UL,
-+		.attrs = PTE_BLOCK_MEMTYPE(MT_NORMAL) |
-+			 PTE_BLOCK_INNER_SHARE
-+	}, {
-+		.virt = 0x09000000UL,
-+		.phys = 0x09000000UL,
-+		.size = 0x77000000UL,
-+		.attrs = PTE_BLOCK_MEMTYPE(MT_NORMAL) |
-+			 PTE_BLOCK_INNER_SHARE
-+	}, {
-+		.virt = 0x80000000UL,
-+		.phys = 0x80000000UL,
-+		.size = 0x80000000UL,
-+		.attrs = PTE_BLOCK_MEMTYPE(MT_DEVICE_NGNRNE) |
-+			 PTE_BLOCK_NON_SHARE |
-+			 PTE_BLOCK_PXN | PTE_BLOCK_UXN
-+	}, {
-+		/* List terminator */
-+		0,
-+	}
-+};
-+
-+struct mm_region *mem_map = bd_mem_map;
-+
-+int mach_cpu_init(void) {
-+	//printf("\nmach_cpu_init\n");
-+#ifdef 	CONFIG_UPDATE_MMU_TABLE
-+	unsigned long nddrSize = ((0x100000000 <= ((readl(SYSCTRL_SEC_STATUS_REG4) &
-+				0xFFFFFFFF0000) << 4)) ? 0xe0000000 :
-+				(((readl(SYSCTRL_SEC_STATUS_REG4)) &
-+				0xFFFFFFFF0000) << 4));
-+
-+	if (nddrSize >= 0xe0000000) {
-+		bd_mem_map[1].size = 0xe0000000UL - bd_mem_map[1].phys;
-+		bd_mem_map[2].virt = 0xe0000000UL;
-+		bd_mem_map[2].phys = 0xe0000000UL;
-+		bd_mem_map[2].size = 0x20000000UL;
-+	}
-+
-+#endif
-+	return 0;
-+}
-+
-+int ft_board_setup(void *blob, bd_t *bd)
-+{
-+	/* eg: bl31/32 rsv */
-+	return 0;
-+}
-+
-+/* partition table for spinor flash */
-+#ifdef CONFIG_SPI_FLASH
-+static const struct mtd_partition spiflash_partitions[] = {
-+	{
-+		.name = "env",
-+		.offset = 0,
-+		.size = 1 * SZ_256K,
-+	},
-+	{
-+		.name = "dtb",
-+		.offset = 0,
-+		.size = 1 * SZ_256K,
-+	},
-+	{
-+		.name = "boot",
-+		.offset = 0,
-+		.size = 2 * SZ_1M,
-+	},
-+	/* last partition get the rest capacity */
-+	{
-+		.name = "user",
-+		.offset = MTDPART_OFS_APPEND,
-+		.size = MTDPART_SIZ_FULL,
-+	}
-+};
-+
-+const struct mtd_partition *get_spiflash_partition_table(int *partitions)
-+{
-+	*partitions = ARRAY_SIZE(spiflash_partitions);
-+	return spiflash_partitions;
-+}
-+#endif /* CONFIG_SPI_FLASH */
-+
-+#ifdef CONFIG_MESON_NFC
-+static struct mtd_partition normal_partition_info[] = {
-+{
-+	.name = BOOT_BL2E,
-+	.offset = 0,
-+	.size = 0,
-+},
-+{
-+	.name = BOOT_BL2X,
-+	.offset = 0,
-+	.size = 0,
-+},
-+{
-+	.name = BOOT_DDRFIP,
-+	.offset = 0,
-+	.size = 0,
-+},
-+{
-+	.name = BOOT_DEVFIP,
-+	.offset = 0,
-+	.size = 0,
-+},
-+{
-+	.name = "logo",
-+	.offset = 0,
-+	.size = 2*SZ_1M,
-+},
-+{
-+	.name = "recovery",
-+	.offset = 0,
-+	.size = 16*SZ_1M,
-+},
-+{
-+	.name = "boot",
-+	.offset = 0,
-+	.size = 16*SZ_1M,
-+},
-+{
-+	.name = "system",
-+	.offset = 0,
-+	.size = 64*SZ_1M,
-+},
-+/* last partition get the rest capacity */
-+{
-+	.name = "data",
-+	.offset = MTDPART_OFS_APPEND,
-+	.size = MTDPART_SIZ_FULL,
-+},
-+};
-+
-+struct mtd_partition *get_aml_mtd_partition(void)
-+{
-+        return normal_partition_info;
-+}
-+
-+int get_aml_partition_count(void)
-+{
-+        return ARRAY_SIZE(normal_partition_info);
-+}
-+
-+#endif
-+
-+/* partition table */
-+/* partition table for spinand flash */
-+#if (defined(CONFIG_SPI_NAND) || defined(CONFIG_MTD_SPI_NAND))
-+static const struct mtd_partition spinand_partitions[] = {
-+	{
-+		.name = "logo",
-+		.offset = 0,
-+		.size = 2 * SZ_1M,
-+	},
-+	{
-+		.name = "recovery",
-+		.offset = 0,
-+		.size = 16 * SZ_1M,
-+	},
-+	{
-+		.name = "boot",
-+		.offset = 0,
-+		.size = 16 * SZ_1M,
-+	},
-+	{
-+		.name = "system",
-+		.offset = 0,
-+		.size = 64 * SZ_1M,
-+	},
-+	/* last partition get the rest capacity */
-+	{
-+		.name = "data",
-+		.offset = MTDPART_OFS_APPEND,
-+		.size = MTDPART_SIZ_FULL,
-+	}
-+};
-+const struct mtd_partition *get_partition_table(int *partitions)
-+{
-+	*partitions = ARRAY_SIZE(spinand_partitions);
-+	return spinand_partitions;
-+}
-+#endif /* CONFIG_SPI_NAND */
-+
-+#ifdef CONFIG_MULTI_DTB
-+phys_size_t get_ddr_memsize(void)
-+{
-+	phys_size_t ddr_size = (((readl(SYSCTRL_SEC_STATUS_REG4)) & ~0xffffUL) << 4);
-+
-+	printf("init board ddr size  %llx\n", ddr_size);
-+	env_set_hex("board_ddr_size", ddr_size);
-+	return ddr_size;
-+}
-+#endif
-+
-+int checkhw(char * name)
-+{
-+#ifdef CONFIG_MULTI_DTB
-+	cpu_id_t cpu_id;
-+
-+	char loc_name[64] = {0};
-+	phys_size_t ddr_size = get_ddr_memsize();
-+
-+	cpu_id = get_cpu_id();
-+
-+	switch (ddr_size) {
-+	case CONFIG_T7_4G_SIZE:
-+		if (cpu_id.chip_rev == 0xA || cpu_id.chip_rev == 0xb) {
-+			#ifdef CONFIG_HDMITX_ONLY
-+			strcpy(loc_name, "t7_a311d2_an400-hdmitx-only\0");
-+			#else
-+			strcpy(loc_name, "t7_a311d2_an400\0");
-+			#endif
-+		} else if (cpu_id.chip_rev == 0xC) {
-+			#ifdef CONFIG_HDMITX_ONLY
-+			strcpy(loc_name, "t7c_a311d2_an400-hdmitx-only-4g\0");
-+			#else
-+			strcpy(loc_name, "t7c_a311d2_an400-4g\0");
-+			#endif
-+		}
-+		break;
-+	case CONFIG_T7_8G_SIZE:
-+		if (cpu_id.chip_rev == 0xA || cpu_id.chip_rev == 0xb) {
-+			strcpy(loc_name, "t7_a311d2_an400\0");
-+		} else if (cpu_id.chip_rev == 0xC) {
-+			strcpy(loc_name, "t7c_a311d2_an400-4g\0");
-+			//
-+		}
-+		break;
-+	default:
-+		printf("DDR size: 0x%llx, multi-dt doesn't support, ", ddr_size);
-+		printf("set default t7_a311d2_an400\n");
-+		if (cpu_id.chip_rev == 0xA || cpu_id.chip_rev == 0xb) {
-+			strcpy(loc_name, "t7_a311d2_an400\0");
-+		} else if (cpu_id.chip_rev == 0xC) {
-+			strcpy(loc_name, "t7c_a311d2_an400-4g\0");
-+			//
-+		}
-+		break;
-+	}
-+	printf("init aml_dt to %s\n", loc_name);
-+	strcpy(name, loc_name);
-+	env_set("aml_dt", loc_name);
++#ifdef CONFIG_CMD_USB
++#define BOOT_TARGET_DEVICES_USB(func) func(USB, usb, 0)
 +#else
-+	env_set("aml_dt", "t7_a311d2_an400\0");
++#define BOOT_TARGET_DEVICES_USB(func)
 +#endif
-+	return 0;
-+}
 +
-+const char * const _board_env_reserv_array0[] = {
-+	"model_name",
-+	"connector_type",
-+	NULL//Keep NULL be last to tell END
-+};
++#ifndef BOOT_TARGET_DEVICES
++#define BOOT_TARGET_DEVICES(func) \
++    BOOT_TARGET_DEVICES_USB(func) \
++    func(MMC, mmc, 0) \
++    func(MMC, mmc, 1) \
++    func(PXE, pxe, na) \
++    func(DHCP, dhcp, na)
++#endif
 +
-+int __attribute__((weak)) mmc_initialize(bd_t *bis){ return 0;}
++#include <config_distro_bootcmd.h>
 +
-+int __attribute__((weak)) do_bootm(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[]){ return 0;}
++#ifdef CONFIG_HDMITX_ONLY
++#define CONFIG_EXTRA_HDMI_ENV_SETTINGS \
++	"panel_type=edp_0\0" \
++	"outputmode=1080p60hz\0" \
++	"storeargs_hdmitx="\
++		"setenv bootargs ${bootargs} "\
++		"lcd_ctrl=${lcd_ctrl} "\
++		"outputmode=${outputmode} hdmitx=${cecconfig},${colorattribute};"\
++		"\0"\
++	"init_display_hdmitx="\
++		"hdmitx hpd;hdmitx get_parse_edid;hdmitx edid;dovi process;"\
++		"osd open;osd clear;run load_bmp_logo;bmp scale;vout output ${outputmode};"\
++		"dovi set;dovi pkg;vpp hdrpkt;"\
++		"\0"
++#else
++#define CONFIG_EXTRA_HDMI_ENV_SETTINGS \
++	"panel_type=mipi_0\0" \
++	"panel1_type=vbyone_1\0" \
++	"panel2_type=lvds_1\0" \
++	"lcd1_ctrl=0x00000000\0" \
++	"lcd2_ctrl=0x00000000\0" \
++	"outputmode=panel\0" \
++	"outputmode2=1080p60hz\0" \
++	"storeargs_hdmitx="\
++		"if test ${mipi_lcd_exist} != 1; then "\
++			"setenv vout2_args ;"\
++		"else "\
++			"setenv vout2_args vout2=${outputmode2},enable;"\
++		"fi;"\
++		"setenv bootargs ${bootargs} "\
++		"lcd_ctrl=${lcd_ctrl} "\
++		"outputmode=${outputmode} "\
++		"${vout2_args} "\
++		"hdr_policy=${hdr_policy} hdr_priority=${hdr_priority};"\
++		"\0"\
++	"init_display_hdmitx="\
++		"hdmitx hpd;hdmitx get_parse_edid;hdmitx edid;dovi process;"\
++		"setenv outputmode2 ${hdmimode};"\
++		"osd dual_logo;"\
++		"\0"
++#endif
++#define CONFIG_EXTRA_ENV_SETTINGS \
++       "bootcmd_spi=test.s \"$boot_source\" = \"spi\" && sf probe && "\
++           "sf read $loadaddr 0x4c8000 0x8000 && script\0"\
++        "fdt_addr_r=0x01000000\0"\
++        "fdtoverlay_addr_r=0x00a00000\0"\
++        "fdtaddr=0x01000000\0"\
++        "kernel_addr_r=0x01080000\0"\
++        "pxefile_addr_r=0x00010000\0"\
++        "scriptaddr=0x00010000\0" \
++        "ramdisk_addr_r=0x10000000\0"\
++        "kernel_comp_addr_r=0x0d080000\0"\
++        "kernel_comp_size=0x2000000\0"\
++        "pxeuuid=00000000-0000-0000-0000-000000000000\0"\
++        "bootfile=\0"\
++        "fdtfile=amlogic/" CONFIG_DEFAULT_DEVICE_TREE ".dtb\0" \
++        CONFIG_EXTRA_ENV_SETTINGS_BASE \
++        "silent=1\0"\
++        "loadaddr_kernel=0x01080000\0"\
++		"dv_fw_addr=0xa00000\0"\
++        "otg_device=1\0" \
++        "lcd_ctrl=0x00000000\0" \
++        "lcd_debug=0x00000000\0" \
++        "hdmimode=none\0" \
++		"colorattribute=444,8bit\0"\
++		"vout_init=enable\0" \
++        "display_width=1920\0" \
++        "display_height=1080\0" \
++		"hdmichecksum=0x00000000\0" \
++        "display_bpp=24\0" \
++        "display_color_index=24\0" \
++        "display_layer=osd0\0" \
++        "display_color_fg=0xffff\0" \
++        "display_color_bg=0\0" \
++        "dtb_mem_addr=0x01000000\0" \
++        "fb_addr=0x00300000\0" \
++        "fb_width=1920\0" \
++        "fb_height=1080\0" \
++        "frac_rate_policy=1\0" \
++        "hdr_policy=0\0" \
++        "usb_burning=" CONFIG_USB_TOOL_ENTRY "\0" \
++        "fdt_high=0x20000000\0"\
++        "sdcburncfg=aml_sdc_burn.ini\0"\
++        "EnableSelinux=permissive\0" \
++        "lock=10101000\0"\
++        "board=kvim4\0"\
++        "osd_reverse=0\0"\
++        "video_reverse=0\0"\
++        "edid_14_dir=/odm/etc/tvconfig/hdmi/port1_14.bin\0" \
++        "edid_20_dir=/odm/etc/tvconfig/hdmi/port1_20.bin\0" \
++        "edid_select=0\0" \
++        "port_map=0x4321\0" \
++        "cec_fun=0x2F\0" \
++        "logic_addr=0x0\0" \
++        "cec_ac_wakeup=1\0" \
++	CONFIG_EXTRA_HDMI_ENV_SETTINGS \
++        "initargs="\
++            "rootflags=data=writeback rw rootfstype=ext4" CONFIG_KNL_LOG_LEVEL "no_console_suspend earlycon=aml-uart,0xfe078000 fsck.repair=yes net.ifnames=0 "\
++            "ramoops.pstore_en=1 ramoops.record_size=0x8000 ramoops.console_size=0x4000 loop.max_part=4 "\
++			"scsi_mod.scan=async xhci_hcd.quirks=0x800000 scramble_reg=0xfe02e030 gamma=0 "\
++            "khadas_board=VIM4 boot_source=${boot_source} "\
++            "\0"\
++        "upgrade_check="\
++			"run upgrade_check_base;"\
++			"\0"\
++		"storeargs="\
++			"get_bootloaderversion;" \
++			"run storeargs_base;"\
++			"setenv bootargs ${bootargs} init_on_alloc=0 "\
++				"nn_adj_vol=${nn_adj_vol};"\
++			"run storeargs_hdmitx;"\
++            "run cmdline_keys;"\
++            "\0"\
++	"cec_init="\
++		"echo cec_ac_wakeup=${cec_ac_wakeup}; "\
++		"if test ${cec_ac_wakeup} = 1; then "\
++			"cec ${logic_addr} ${cec_fun}; "\
++			"if test ${edid_select} = 1111; then "\
++				"hdmirx init ${port_map} ${edid_20_dir}; "\
++			"else "\
++				"hdmirx init ${port_map} ${edid_14_dir}; "\
++			"fi;"\
++		"fi;"\
++	"\0"\
++        "switch_bootmode="\
++            "get_rebootmode;"\
++            "setenv bootargs ${bootargs} reboot_mode=${reboot_mode};"\
++            "echo reboot_mode : ${reboot_mode};"\
++            "if test ${reboot_mode} = factory_reset; then "\
++				"run recovery_from_flash;"\
++            "else if test ${reboot_mode} = update; then "\
++				"run update;"\
++            "else if test ${reboot_mode} = cold_boot; then "\
++				"echo cold boot;"\
++            "else if test ${reboot_mode} = fastboot; then "\
++				"fastboot 1;"\
++            "fi;fi;fi;fi;"\
++            "\0" \
++		"storeboot="\
++			"run storeboot_base;"\
++			"\0"\
++		"update="\
++			"run update_base;"\
++			"\0"\
++		"enter_fastboot="\
++			"fastboot 1;"\
++			"\0"\
++		"recovery_from_fat_dev="\
++			"run recovery_from_fat_dev_base;"\
++			"\0"\
++		"recovery_from_udisk="\
++			"run recovery_from_udisk_base;"\
++			"\0"\
++		"recovery_from_sdcard="\
++			"run recovery_from_sdcard_base;"\
++			"\0"\
++		"recovery_from_flash="\
++			"run recovery_from_flash_base;"\
++			"\0"\
++        "load_bmp_logo="\
++            "if load mmc 0:2 ${loadaddr} /usr/share/fenix/logo/logo.bmp || load mmc 1:2 ${loadaddr} /usr/share/fenix/logo/logo.bmp || load mmc 1:3 ${loadaddr} /usr/share/fenix/logo/logo.bmp; then "\
++                "bmp display ${loadaddr};"\
++                "bmp scale;"\
++            "fi;"\
++			"\0"\
++        "init_display="\
++			"run init_display_hdmitx;"\
++			"\0"\
++        "check_display="\
++			"run init_display; "\
++			"\0"\
++        "cmdline_keys="\
++            "setenv region_code US;"\
++            "if keyman init 0x1234; then "\
++                "if keyman read region_code ${loadaddr} str; then fi;"\
++                "if keyman read deviceid ${loadaddr} str; then "\
++                    "setenv bootargs ${bootargs} androidboot.deviceid=${deviceid};"\
++                "fi;"\
++            "fi;"\
++            "if printenv usid; then "\
++                "setenv bootargs ${bootargs} androidboot.serialno=${usid};"\
++                "setenv serial ${usid}; setenv serial# ${usid};"\
++            "else "\
++                "setenv bootargs ${bootargs} androidboot.serialno=an400${cpu_id};"\
++                "setenv serial kvim4${cpu_id}; setenv serial# kvim4${cpu_id};"\
++            "fi;"\
++            "setenv bootargs ${bootargs} mac=${eth_mac} ;"\
++            "\0"\
++        "upgrade_key="\
++            "if gpio input GPIOD_4; then "\
++                "echo detect upgrade key; run update;"\
++            "fi;"\
++            "\0"\
++        "updateu="\
++            "if tftp 1080000 u-boot.bin.signed; then "\
++                "store boot_write bootloader 1080000 $filesize;"\
++            "fi;"\
++            "\0"\
++        BOOTENV\
++        "pxe_boot=dhcp; pxe get && pxe boot\0"\
++        "bootcmd_storeboot=run storeboot\0"\
++        "boot_targets=spi usb0 mmc0 mmc1 storeboot pxe dhcp\0"
 +
-+void __attribute__((weak)) set_working_fdt_addr(ulong addr) {}
++#define CONFIG_PREBOOT  \
++            "run upgrade_check;"\
++            "run check_display;"\
++            "run storeargs;"\
++            "run upgrade_key;"\
++            "run switch_bootmode;"
 +
-+int __attribute__((weak)) ofnode_read_u32_default(ofnode node, const char *propname, u32 def) {return 0;}
++#ifndef CONFIG_HDMITX_ONLY
++/* dual logo, normal boot */
++#define CONFIG_DUAL_LOGO \
++	"setenv outputmode2 ${hdmimode};"\
++	"setenv display_layer viu2_osd0;vout2 prepare ${outputmode2};"\
++	"osd open;osd clear;run load_bmp_logo;vout2 output ${outputmode2};bmp scale;"\
++	"if test ${outputmode2} = ${hmdimode}; then "\
++		"dovi set;dovi pkg;vpp hdrpkt;"\
++	"fi; "\
++	"if test ${mipi_lcd_exist} = 1; then "\
++		"if test ${panel_type} = mipi_1; then "\
++			"setenv fb_width 1920;"\
++			"setenv fb_height 1200;"\
++		"else "\
++			"setenv fb_width 1080;"\
++			"setenv fb_height 1920;"\
++		"fi;"\
++	"fi; "\
++	"setenv display_layer osd0;osd open;osd clear;"\
++	"run load_bmp_logo;bmp scale;vout output ${outputmode};"\
++	"if test ${outputmode} = ${hmdimode}; then "\
++		"dovi set;dovi pkg;vpp hdrpkt;"\
++	"fi; "\
++	"\0"\
 +
-+void __attribute__((weak)) md5_wd (unsigned char *input, int len, unsigned char output[16],	unsigned int chunk_sz){}
-diff --git a/board/khadas/65t33z/Kconfig b/board/khadas/65t33z/Kconfig
++/* dual logo, factory_reset boot, recovery always displays on panel */
++#define CONFIG_RECOVERY_DUAL_LOGO \
++	"setenv outputmode2 ${hdmimode};"\
++	"setenv display_layer viu2_osd0;vout2 prepare ${outputmode2};"\
++	"osd open;osd clear;run load_bmp_logo;vout2 output ${outputmode2};bmp scale;"\
++	"if test ${outputmode2} = ${hmdimode}; then "\
++		"dovi set;dovi pkg;vpp hdrpkt;"\
++	"fi; "\
++	"setenv display_layer osd0;osd open;osd clear;"\
++	"run load_bmp_logo;bmp scale;vout output ${outputmode};"\
++	"if test ${outputmode} = ${hmdimode}; then "\
++		"dovi set;dovi pkg;vpp hdrpkt;"\
++	"fi; "\
++	"\0"\
++
++/* single logo */
++#define CONFIG_SINGLE_LOGO \
++	"if test ${mipi_lcd_exist} = 1; then "\
++		"if test ${panel_type} = mipi_1; then "\
++			"setenv fb_width 1920;"\
++			"setenv fb_height 1200;"\
++		"else "\
++			"setenv fb_width 1080;"\
++			"setenv fb_height 1920;"\
++		"fi;"\
++	"fi; "\
++	"setenv display_layer osd0;osd open;osd clear;"\
++	"run load_bmp_logo;bmp scale;vout output ${outputmode};"\
++	"if test ${outputmode} = ${hmdimode}; then "\
++		"dovi set;dovi pkg;vpp hdrpkt;"\
++	"fi; "\
++	"\0"
++#endif
++
++/* #define CONFIG_ENV_IS_NOWHERE  1 */
++#define CONFIG_ENV_SIZE   (64*1024)
++#define CONFIG_FIT 1
++#define CONFIG_OF_LIBFDT 1
++#define CONFIG_ANDROID_BOOT_IMAGE 1
++#define CONFIG_SYS_BOOTM_LEN (64<<20) /* Increase max gunzip size*/
++
++/* ATTENTION */
++/* DDR configs move to board/amlogic/[board]/firmware/timing.c */
++
++/* running in sram */
++//#define UBOOT_RUN_IN_SRAM
++#ifdef UBOOT_RUN_IN_SRAM
++#define CONFIG_SYS_INIT_SP_ADDR                (0x00300000)
++/* Size of malloc() pool */
++#define CONFIG_SYS_MALLOC_LEN                (256*1024)
++#else
++#define CONFIG_SYS_INIT_SP_ADDR                (0x00300000)
++#define CONFIG_SYS_MALLOC_LEN                (96*1024*1024)
++#endif
++
++//#define CONFIG_NR_DRAM_BANKS            1
++/* ddr functions */
++#define DDR_FULL_TEST            0 //0:disable, 1:enable. ddr full test
++#define DDR_LOW_POWER            0 //0:disable, 1:enable. ddr clk gate for lp
++#define DDR_ZQ_PD                0 //0:disable, 1:enable. ddr zq power down
++#define DDR_USE_EXT_VREF         0 //0:disable, 1:enable. ddr use external vref
++#define DDR4_TIMING_TEST         0 //0:disable, 1:enable. ddr4 timing test function
++#define DDR_PLL_BYPASS           0 //0:disable, 1:enable. ddr pll bypass function
++
++/* storage: emmc/nand/sd */
++#define CONFIG_ENV_OVERWRITE
++/* #define     CONFIG_CMD_SAVEENV */
++/* fixme, need fix*/
++
++#if (defined(CONFIG_ENV_IS_IN_AMLNAND) || defined(CONFIG_ENV_IS_IN_MMC)) && defined(CONFIG_STORE_COMPATIBLE)
++#error env in amlnand/mmc already be compatible;
++#endif
++
++/*
++*                storage
++*        |---------|---------|
++*        |                    |
++*        emmc<--Compatible-->nand
++*                    |-------|-------|
++*                    |        |
++*                    MTD<-Exclusive->NFTL
++*                    |
++*            |***************|***************|
++*            slc-nand    SPI-nand    SPI-nor
++*            (raw nand)
++*/
++/* axg only support slc nand */
++/* swither for mtd nand which is for slc only. */
++
++
++#if defined(CONFIG_AML_NAND) && defined(CONFIG_MESON_NFC)
++#error CONFIG_AML_NAND/CONFIG_MESON_NFC can not support at the sametime;
++#endif
++
++#if (defined(CONFIG_AML_NAND) || defined(CONFIG_MESON_NFC)) && defined(CONFIG_MESON_FBOOT)
++#error CONFIG_AML_NAND/CONFIG_MESON_NFC CONFIG _MESON_FBOOT can not support at the sametime;
++#endif
++
++#if defined(CONFIG_SPI_NAND) && defined(CONFIG_MTD_SPI_NAND) && defined(CONFIG_MESON_NFC)
++#error CONFIG_SPI_NAND/CONFIG_MTD_SPI_NAND/CONFIG_MESON_NFC can not support at the sametime;
++#endif
++
++/* #define        CONFIG_AML_SD_EMMC 1 */
++#ifdef        CONFIG_AML_SD_EMMC
++    #define     CONFIG_GENERIC_MMC 1
++    #define     CONFIG_CMD_MMC 1
++    #define CONFIG_CMD_GPT 1
++    #define    CONFIG_SYS_MMC_ENV_DEV 1
++    #define CONFIG_EMMC_DDR52_EN 0
++    #define CONFIG_EMMC_DDR52_CLK 35000000
++#endif
++#define        CONFIG_PARTITIONS 1
++#if 0
++#define     CONFIG_SYS_NO_FLASH  1
++#endif
++
++#if defined CONFIG_MESON_NFC || defined CONFIG_SPI_NAND || defined CONFIG_MTD_SPI_NAND
++    #define CONFIG_SYS_MAX_NAND_DEVICE  2
++#endif
++
++/* vpu */
++#define AML_VPU_CLK_LEVEL_DFT 7
++/* LCD */
++
++/* osd */
++#define OSD_SCALE_ENABLE
++#define AML_OSD_HIGH_VERSION
++#define AML_T7_DISPLAY
++#define VEHICLE_CONFIG
++
++/* USB
++ * Enable CONFIG_MUSB_HCD for Host functionalities MSC, keyboard
++ * Enable CONFIG_MUSB_UDD for Device functionalities.
++ */
++/* #define CONFIG_MUSB_UDC        1 */
++/* #define CONFIG_CMD_USB 1 */
++
++#define USB_PHY2_PLL_PARAMETER_1    0x09400414
++#define USB_PHY2_PLL_PARAMETER_2    0x927e0000
++#define USB_PHY2_PLL_PARAMETER_3    0xAC5F49E5
++
++#define USB_G12x_PHY_PLL_SETTING_1    (0xfe18)
++#define USB_G12x_PHY_PLL_SETTING_2    (0xfff)
++#define USB_G12x_PHY_PLL_SETTING_3    (0x78000)
++#define USB_G12x_PHY_PLL_SETTING_4    (0xe0004)
++#define USB_G12x_PHY_PLL_SETTING_5    (0xe000c)
++
++#define AML_TXLX_USB        1
++#define AML_USB_V2             1
++#define USB_GENERAL_BIT         3
++#define USB_PHY21_BIT           4
++
++/* UBOOT fastboot config */
++
++
++/* UBOOT factory usb/sdcard burning config */
++
++/* net */
++#define CONFIG_CMD_NET   1
++#define CONFIG_ETH_DESIGNWARE
++#if defined(CONFIG_CMD_NET)
++    #define CONFIG_DESIGNWARE_ETH 1
++    #define CONFIG_PHYLIB    1
++    #define CONFIG_NET_MULTI 1
++    #define CONFIG_CMD_PING 1
++    #define CONFIG_CMD_DHCP 1
++    #define CONFIG_CMD_RARP 1
++    #define CONFIG_HOSTNAME        "arm_gxbb"
++#if 0
++    #define CONFIG_RANDOM_ETHADDR  1                   /* use random eth addr, or default */
++#endif
++	#define CONFIG_ETHADDR         00:15:18:01:81:31   /* Ethernet address */
++	#define CONFIG_IPADDR          192.168.31.200          /* Our ip address */
++	#define CONFIG_GATEWAYIP       192.168.31.1           /* Our getway ip address */
++	#define CONFIG_SERVERIP        192.168.31.230         /* Tftp server ip address */
++	#define CONFIG_NETMASK         255.255.255.0
++#endif /* (CONFIG_CMD_NET) */
++
++#define MAC_ADDR_NEW  1
++
++/* other devices */
++#define CONFIG_SHA1 1
++#define CONFIG_MD5 1
++
++/* commands */
++ #define CONFIG_CMD_PLLTEST 1
++
++/*file system*/
++#define CONFIG_DOS_PARTITION 1
++#define CONFIG_EFI_PARTITION 1
++/* #define CONFIG_MMC 1 */
++#define CONFIG_FS_FAT 1
++#define CONFIG_FS_EXT4 1
++#define CONFIG_LZO 1
++
++#define CONFIG_FAT_WRITE 1
++#define CONFIG_AML_FACTORY_PROVISION 1
++
++/* Cache Definitions */
++/* #define CONFIG_SYS_DCACHE_OFF */
++/* #define CONFIG_SYS_ICACHE_OFF */
++
++/* other functions */
++#define CONFIG_LIBAVB        1
++
++/* define CONFIG_SYS_MEM_TOP_HIDE 8M space for free buffer */
++#define CONFIG_SYS_MEM_TOP_HIDE        0x00800000
++
++#define CONFIG_CPU_ARMV8
++
++//use sha2 command
++#define CONFIG_CMD_SHA2
++
++//use startdsp command
++#define CONFIG_CMD_STARTDSP
++
++//use cache command
++#define CONFIG_CMD_CACHE
++
++//use remapset command
++#define CONFIG_CMD_REMAPSET
++
++//use hardware sha2
++//#define CONFIG_AML_HW_SHA2
++
++//Replace avb2 software SHA256 to utilize armce
++#define CONFIG_AVB2_UBOOT_SHA256
++//#define CONFIG_MULTI_DTB    1
++// use auto select DTB table
++#ifdef CONFIG_MULTI_DTB
++    #define CONFIG_T7_3G_SIZE   0xC0000000
++    #define CONFIG_T7_4G_SIZE   0x100000000
++    #define CONFIG_T7_6G_SIZE   0x180000000
++    #define CONFIG_T7_8G_SIZE   0x200000000
++#endif
++
++#define CONFIG_RX_RTERM        1
++#define CONFIG_CMD_HDMIRX   1
++#define CONFIG_CMD_CEC        1
++/* define CONFIG_UPDATE_MMU_TABLE for need update mmu */
++#define    CONFIG_UPDATE_MMU_TABLE
++
++/* support secure boot */
++#define CONFIG_AML_SECURE_UBOOT   1
++
++#if defined(CONFIG_AML_SECURE_UBOOT)
++
++/* unify build for generate encrypted bootloader "u-boot.bin.encrypt" */
++#define CONFIG_AML_CRYPTO_UBOOT   1
++#ifdef CONFIG_SCS
++	#define CONFIG_AML_SIGNED_UBOOT   1
++#endif
++/* unify build for generate encrypted kernel image
++   SRC : "board/amlogic/(board)/boot.img"
++   DST : "fip/boot.img.encrypt" */
++/* #define CONFIG_AML_CRYPTO_IMG       1 */
++
++#endif /* CONFIG_AML_SECURE_UBOOT */
++
++#define CONFIG_FIP_IMG_SUPPORT  1
++
++/* config ramdump to debug kernel panic */
++#define CONFIG_FULL_RAMDUMP
++
++#define BL32_SHARE_MEM_SIZE  0x800000
++#define CONFIG_AML_KASLR_SEED
++
++#endif
++
++#undef CONFIG_SYS_CBSIZE
++#define CONFIG_SYS_CBSIZE 4096
++
++#define CONFIG_SYS_VIDEO_LOGO_MAX_SIZE 8192000
++#define CONFIG_VIDEO_BMP_GZIP 1
+diff --git a/board/khadas/defconfigs/tvpro_defconfig b/board/khadas/defconfigs/tvpro_defconfig
 new file mode 100644
+index 00000000000..514098d727b
 --- /dev/null
-+++ b/board/khadas/65t33z/Kconfig
++++ b/board/khadas/defconfigs/tvpro_defconfig
+@@ -0,0 +1,138 @@
++CONFIG_ARM=y
++CONFIG_ARCH_MESON=y
++CONFIG_SYS_TEXT_BASE=0x00000000
++CONFIG_MESON_T7=y
++CONFIG_AML_TSENSOR=y
++CONFIG_AML_TSENSOR_COOL=y
++CONFIG_DDR_FULL_FW=y
++CONFIG_DDRFW_TYPE="lpddr4"
++CONFIG_CHIPSET_NAME="a311d2"
++CONFIG_BL30_SELECT="tvpro"
++CONFIG_CORELAB_TVPRO=y
++CONFIG_DEBUG_UART_BASE=0xfe078000
++CONFIG_DEBUG_UART_CLOCK=24000000
++CONFIG_ARMV8_CRYPTO=y
++CONFIG_DEBUG_UART=y
++# CONFIG_ANDROID_BOOT_IMAGE is not set
++CONFIG_OF_BOARD_SETUP=y
++CONFIG_BOOTDELAY=2
++CONFIG_BOARD_LATE_INIT=y
++# CONFIG_DISPLAY_CPUINFO is not set
++# CONFIG_DISPLAY_BOARDINFO is not set
++CONFIG_SYS_PROMPT="tvpro# "
++CONFIG_AUTOBOOT_KEYED=y
++CONFIG_AUTOBOOT_PROMPT="Hit SPACE in %d seconds to stop autoboot\n"
++CONFIG_AUTOBOOT_DELAY_STR="2"
++CONFIG_AUTOBOOT_STOP_STR=" "
++# CONFIG_CMD_BDI is not set
++# CONFIG_CMD_DSPSET is not set
++CONFIG_CMD_GO=y
++# CONFIG_CMD_IMI is not set
++CONFIG_CMD_CLKMSR=y
++CONFIG_CMD_GPIO=y
++CONFIG_CMD_I2C=y
++# CONFIG_CMD_LOADB is not set
++# CONFIG_CMD_LOADS is not set
++CONFIG_CMD_MMC=y
++CONFIG_AML_STORAGE=y
++# CONFIG_CMD_PINMUX is not set
++CONFIG_CMD_SF=y
++CONFIG_CMD_SF_TEST=y
++CONFIG_CMD_USB=y
++CONFIG_CMD_SARADC=y
++# CONFIG_CMD_SETEXPR is not set
++CONFIG_CMD_BMP=y
++CONFIG_CMD_BTRFS=y
++CONFIG_BOOTLOADER_CONTROL_BLOCK=y
++CONFIG_CMD_BOOTCTOL_AVB=y
++CONFIG_CMD_WATCHDOG=y
++CONFIG_CMD_JTAG=y
++CONFIG_CMD_INI=y
++CONFIG_CMD_CFGLOAD=y
++# CONFIG_CMD_KHADAS_KBI is not set
++CONFIG_AML_PARTITION=y
++CONFIG_OF_CONTROL=y
++CONFIG_OF_EMBED=y
++CONFIG_DEFAULT_DEVICE_TREE="tvpro"
++# CONFIG_REGMAP is not set
++CONFIG_ADC=y
++CONFIG_SARADC_MESON_G12A=y
++CONFIG_CLK=y
++CONFIG_CLK_MESON=y
++CONFIG_CLK_MESON_T7=y
++CONFIG_USB_FUNCTION_FASTBOOT=y
++CONFIG_FASTBOOT_FLASH=y
++CONFIG_FASTBOOT_FLASH_MMC_DEV=1
++CONFIG_DM_GPIO=y
++CONFIG_DM_I2C=y
++CONFIG_SYS_I2C_MESON=y
++CONFIG_MISC=y
++CONFIG_DM_MMC=y
++CONFIG_MMC_HS400_SUPPORT=y
++CONFIG_MMC_MESON_GX=y
++CONFIG_PTBL_MBR=y
++CONFIG_MTD=y
++# CONFIG_AML_MTD is not set
++CONFIG_DM_SPI_FLASH=y
++CONFIG_SPI_FLASH=y
++CONFIG_SPI_FLASH_BAR=y
++CONFIG_SPI_FLASH_WINBOND=y
++CONFIG_SPI_FLASH_MTD=y
++CONFIG_PHYLIB=y
++CONFIG_PHY_REALTEK=y
++CONFIG_RTL8211E_PINE64_GIGABIT_FIX=y
++CONFIG_RTL8211X_PHY_FORCE_MASTER=y
++CONFIG_DM_ETH=y
++CONFIG_PHY=y
++CONFIG_AML_USB3_PHY=y
++CONFIG_AML_USB2_PHY=y
++CONFIG_PINCTRL=y
++CONFIG_PINCONF=y
++CONFIG_PINCTRL_MESON_T7=y
++CONFIG_DM_REGULATOR=y
++CONFIG_DM_REGULATOR_FIXED=y
++CONFIG_DM_REGULATOR_GPIO=y
++CONFIG_DM_PWM=y
++CONFIG_PWM_MESON=y
++CONFIG_DEBUG_UART_MESON=y
++CONFIG_DEBUG_UART_ANNOUNCE=y
++CONFIG_DEBUG_UART_SKIP_INIT=y
++CONFIG_MESON_SERIAL=y
++CONFIG_SPI=y
++CONFIG_DM_SPI=y
++CONFIG_AML_SPICC=y
++CONFIG_AML_SPIFC=y
++CONFIG_TEE=y
++CONFIG_OPTEE=y
++CONFIG_USB=y
++CONFIG_DM_USB=y
++CONFIG_AML_USB=y
++CONFIG_USB_XHCI_HCD=y
++CONFIG_USB_XHCI_CRG=y
++CONFIG_USB_GADGET=y
++CONFIG_USB_GADGET_CRG=y
++CONFIG_AML_FACTORY_BURN_LOCAL_UPGRADE=y
++CONFIG_SD_BURNING_SUPPORT_UI=y
++CONFIG_AML_V3_FACTORY_BURN=y
++CONFIG_AML_V3_USB_TOOl=y
++CONFIG_WDT=y
++CONFIG_WDT_MESON=y
++CONFIG_AML_DRIVER=y
++CONFIG_AML_MEDIA=y
++CONFIG_AML_VOUT=y
++CONFIG_AML_OSD=y
++CONFIG_AML_DOLBY=y
++CONFIG_AML_VPP=y
++CONFIG_AML_VPU=y
++CONFIG_AML_HDMITX=y
++CONFIG_AML_HDMITX21=y
++CONFIG_UNIFY_KEY_MANAGE=y
++CONFIG_SECURE_STORAGE=y
++CONFIG_SECURE_POWER_CONTROL=y
++CONFIG_MESON_LEDS_STATE_CONTROL=y
++CONFIG_EFUSE=y
++CONFIG_IMAGE_CHECK=y
++CONFIG_SHA1=y
++CONFIG_LZ4=y
++CONFIG_ZSTD=y
++CONFIG_OF_LIBFDT_OVERLAY=y
+diff --git a/board/khadas/tvpro/Kconfig b/board/khadas/tvpro/Kconfig
+new file mode 100644
+index 00000000000..6c45a8e4078
+--- /dev/null
++++ b/board/khadas/tvpro/Kconfig
 @@ -0,0 +1,32 @@
-+if TARGET_AOC_65T33Z
++if TARGET_CORELAB_TVPRO
 +
 +config ENV_HDMITX_ONLY
 +	string
@@ -1773,13 +2099,13 @@ new file mode 100644
 +	default "t7"
 +
 +config SYS_BOARD
-+	default "65t33z"
++	default "tvpro"
 +
 +config SYS_VENDOR
 +	default "khadas"
 +
 +config SYS_CONFIG_NAME
-+	default "65t33z"
++	default "tvpro"
 +
 +config DTB_BIND_KERNEL
 +    bool "load dtb from boot part but not flash rsv"
@@ -1791,17 +2117,20 @@ new file mode 100644
 +       help
 +         support uboot reboot cmd
 +endif
-diff --git a/board/khadas/65t33z/Makefile b/board/khadas/65t33z/Makefile
+diff --git a/board/khadas/tvpro/Makefile b/board/khadas/tvpro/Makefile
 new file mode 100644
+index 00000000000..1e920e7aa01
 --- /dev/null
-+++ b/board/khadas/65t33z/Makefile
-@@ -0,0 +1,2 @@
++++ b/board/khadas/tvpro/Makefile
+@@ -0,0 +1,3 @@
 +obj-y += $(BOARD).o
 +obj-$(CONFIG_AML_LCD) += lcd.o
-diff --git a/board/khadas/65t33z/firmware/timing.c b/board/khadas/65t33z/firmware/timing.c
++
+diff --git a/board/khadas/tvpro/firmware/timing.c b/board/khadas/tvpro/firmware/timing.c
 new file mode 100644
+index 00000000000..15ad83bb158
 --- /dev/null
-+++ b/board/khadas/65t33z/firmware/timing.c
++++ b/board/khadas/tvpro/firmware/timing.c
 @@ -0,0 +1,1143 @@
 +// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
 +/*
@@ -1859,7 +2188,7 @@ new file mode 100644
 +#define         AN_408_DDR0_4G_DDR1_4G_RANK01   6
 +#define         AN_408_DDR0_3G_DDR1_3G_RANK01   7
 +
-+#define DDR_SIZE_TYPE_1         AN_408_DDR0_2G_DDR1_2G
++#define DDR_SIZE_TYPE_1         AN_408_DDR0_4G_DDR1_4G_RANK01
 +
 +ddr_set_t __ddr_setting[] __attribute__ ((section(".ddr_param"))) = {
 +#if 0
@@ -2072,7 +2401,7 @@ new file mode 100644
 +		//.dram_rank_config		= CONFIG_DDR0_32BIT_RANK0_CH0,
 +		.DramType = CONFIG_DDR_TYPE_LPDDR4,
 +		.enable_lpddr4x_mode = ENABLE_LPDDR4X_MODE,
-+		.DRAMFreq ={ 1866,		       0,	0,	 0	 },
++		.DRAMFreq ={ 2133,		       0,	0,	 0	 },
 +		.ddr_rfc_type = DDR_RFC_TYPE_LPDDR4_8Gbx1,
 +		.ddr_base_addr = CFG_DDR_BASE_ADDR,
 +		.ddr_start_offset = CFG_DDR_START_OFFSET,
@@ -2278,7 +2607,7 @@ new file mode 100644
 +		//.dram_rank_config		= CONFIG_DDR0_32BIT_RANK0_CH0,
 +		.DramType = CONFIG_DDR_TYPE_LPDDR4,
 +		.enable_lpddr4x_mode = ENABLE_LPDDR4X_MODE,
-+		.DRAMFreq ={ 1866,		       0,	0,	 0	 },
++		.DRAMFreq ={ 2133,		       0,	0,	 0	 },
 +		.ddr_rfc_type = DDR_RFC_TYPE_LPDDR4_8Gbx1,
 +		.ddr_base_addr = CFG_DDR_BASE_ADDR,
 +		.ddr_start_offset = CFG_DDR_START_OFFSET,
@@ -2946,10 +3275,11 @@ new file mode 100644
 +		.use_param_page_list		= 0,
 +	},
 +};
-diff --git a/board/khadas/65t33z/fw_arb.cfg b/board/khadas/65t33z/fw_arb.cfg
+diff --git a/board/khadas/tvpro/fw_arb.cfg b/board/khadas/tvpro/fw_arb.cfg
 new file mode 100644
+index 00000000000..5237e72d120
 --- /dev/null
-+++ b/board/khadas/65t33z/fw_arb.cfg
++++ b/board/khadas/tvpro/fw_arb.cfg
 @@ -0,0 +1,16 @@
 +# Configure Firmware Anti-rollback Versions
 +device_scs_vers=0x0
@@ -2967,10 +3297,11 @@ new file mode 100644
 +echo $DEVICE_SCS_VERS
 +echo $DEVICE_TEE_VERS
 +echo $DEVICE_REE_VERS
-diff --git a/board/khadas/65t33z/lcd.c b/board/khadas/65t33z/lcd.c
+diff --git a/board/khadas/tvpro/lcd.c b/board/khadas/tvpro/lcd.c
 new file mode 100644
+index 00000000000..b86fb59d13d
 --- /dev/null
-+++ b/board/khadas/65t33z/lcd.c
++++ b/board/khadas/tvpro/lcd.c
 @@ -0,0 +1,642 @@
 +// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
 +/*
@@ -3614,808 +3945,599 @@ new file mode 100644
 +		pdata->dft_conf[2] = &lcd_dft_conf[2];
 +	}
 +}
-diff --git a/board/khadas/configs/65t33z.h b/board/khadas/configs/65t33z.h
+diff --git a/board/khadas/tvpro/tvpro.c b/board/khadas/tvpro/tvpro.c
 new file mode 100644
+index 00000000000..7285ff0ad6b
 --- /dev/null
-+++ b/board/khadas/configs/65t33z.h
-@@ -0,0 +1,609 @@
-+/* SPDX-License-Identifier: (GPL-2.0+ OR MIT) */
++++ b/board/khadas/tvpro/tvpro.c
+@@ -0,0 +1,587 @@
++// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
 +/*
 + * Copyright (c) 2022 Wesion, Inc. All rights reserved.
 + */
-+
-+#ifndef __BOARD_CFG_H__
-+#define __BOARD_CFG_H__
-+
-+#include <asm/arch/cpu.h>
-+#include <amlogic/base_env.h>
-+
-+/*
-+ * platform power init config
-+ */
-+
-+#define AML_VCCK_A_INIT_VOLTAGE      1009       // VCCK A power up voltage
-+#define AML_VCCK_B_INIT_VOLTAGE      1009       // VCCK B power up voltage
-+#define AML_VDDEE_INIT_VOLTAGE       830       // VDDEE power up voltage
-+#define AML_VDDGPU_INIT_VOLTAGE      830       // VDDGPU power up voltage
-+#define AML_VDDNPU_INIT_VOLTAGE      830       // VDDNPU power up voltage
-+#define AML_VDDDDR_INIT_VOLTAGE      830       // VDDDDR power up voltage
-+/*Distinguish whether to use efuse to adjust vddee*/
-+#define CONFIG_PDVFS_ENABLE
-+
-+/* SMP Definitions */
-+#define CPU_RELEASE_ADDR        secondary_boot_func
-+
-+/* Bootloader Control Block function
-+   That is used for recovery and the bootloader to talk to each other
-+  */
-+#if 0
-+#define CONFIG_BOOTLOADER_CONTROL_BLOCK
++#include <common.h>
++#include <asm/io.h>
++#include <malloc.h>
++#include <errno.h>
++#include <environment.h>
++#include <fdt_support.h>
++#include <linux/libfdt.h>
++#include <amlogic/cpu_id.h>
++#include <asm/arch/secure_apb.h>
++#include <asm/arch/pinctrl_init.h>
++#include <linux/sizes.h>
++#include <asm-generic/gpio.h>
++#include <dm.h>
++#include <asm/armv8/mmu.h>
++#include <amlogic/aml_v3_burning.h>
++#include <amlogic/aml_v2_burning.h>
++#include <linux/mtd/partitions.h>
++#include <asm/arch/bl31_apis.h>
++#include <asm/arch/stick_mem.h>
++#include <i2c.h>
++#ifdef CONFIG_AML_VPU
++#include <amlogic/media/vpu/vpu.h>
 +#endif
-+
-+/* Serial config */
-+#define CONFIG_CONS_INDEX 2
-+#define CONFIG_BAUDRATE  921600
-+
-+/* AVB */
-+#define CONFIG_AML_AVB2_ANTIROLLBACK 1
-+#define CONFIG_AVB_VERIFY 1
-+#define CONFIG_SUPPORT_EMMC_RPMB 1
-+#define CONFIG_AML_DEV_ID 1
-+
-+/*low console baudrate*/
-+#define CONFIG_LOW_CONSOLE_BAUD            0
-+
-+/* Enable ir remote wake up for bl30 */
-+#define AML_IR_REMOTE_POWER_UP_KEY_VAL1 0xef10fe01 //amlogic tv ir --- power
-+#define AML_IR_REMOTE_POWER_UP_KEY_VAL2 0XBB44FB04 //amlogic tv ir --- ch+
-+#define AML_IR_REMOTE_POWER_UP_KEY_VAL3 0xF20DFE01 //amlogic tv ir --- ch-
-+#define AML_IR_REMOTE_POWER_UP_KEY_VAL4 0XBA45BD02 //amlogic small ir--- power
-+#define AML_IR_REMOTE_POWER_UP_KEY_VAL5 0xe51afb04
-+#define AML_IR_REMOTE_POWER_UP_KEY_VAL6 0xFFFFFFFF
-+#define AML_IR_REMOTE_POWER_UP_KEY_VAL7 0xFFFFFFFF
-+#define AML_IR_REMOTE_POWER_UP_KEY_VAL8 0xFFFFFFFF
-+#define AML_IR_REMOTE_POWER_UP_KEY_VAL9 0xFFFFFFFF
-+
-+/*config the default parameters for adc power key*/
-+#define AML_ADC_POWER_KEY_CHAN   2  /*channel range: 0-7*/
-+#define AML_ADC_POWER_KEY_VAL    0  /*sample value range: 0-1023*/
-+
-+//#define CONFIG_BOOTLOADER_CONTROL_BLOCK
-+
-+#ifdef CONFIG_DTB_LOAD
-+#undef CONFIG_DTB_LOAD
++#ifdef CONFIG_AML_VPP
++#include <amlogic/media/vpp/vpp.h>
 +#endif
++#ifdef CONFIG_AML_VOUT
++#include <amlogic/media/vout/aml_vout.h>
++#endif
++#ifdef CONFIG_AML_HDMITX21
++#include <amlogic/media/vout/hdmitx21/hdmitx_module.h>
++#endif
++#ifdef CONFIG_AML_LCD
++#include <amlogic/media/vout/lcd/lcd_vout.h>
++#endif
++#ifdef CONFIG_RX_RTERM
++#include <amlogic/aml_hdmirx.h>
++#endif
++#include <amlogic/storage.h>
++#ifdef CONFIG_CMD_SND
++#include "amlogic/auge_sound.h"
++#endif
++#include <amlogic/board.h>
 +
-+#ifdef CONFIG_DTB_BIND_KERNEL    //load dtb from kernel, such as boot partition
-+#define CONFIG_DTB_LOAD  "imgread dtb ${boot_part} ${dtb_mem_addr}"
++
++DECLARE_GLOBAL_DATA_PTR;
++
++void sys_led_init(void)
++{
++}
++
++int serial_set_pin_port(unsigned long port_base)
++{
++    return 0;
++}
++
++int dram_init(void)
++{
++	gd->ram_size = PHYS_SDRAM_1_SIZE;
++	return 0;
++}
++
++/* secondary_boot_func
++ * this function should be write with asm, here, is is only for compiling pass
++ * */
++void secondary_boot_func(void)
++{
++}
++
++int board_eth_init(bd_t *bis)
++{
++	return 0;
++}
++
++int active_clk(void)
++{
++	struct udevice *clk = NULL;
++	int err;
++
++	err = uclass_get_device_by_name(UCLASS_CLK,
++			"xtal-clk", &clk);
++	if (err) {
++		pr_err("Can't find xtal-clk clock (%d)\n", err);
++		return err;
++	}
++	err = uclass_get_device_by_name(UCLASS_CLK,
++			"clock-controller@0", &clk);
++	if (err) {
++		pr_err("Can't find clock-controller@0 clock (%d)\n", err);
++		return err;
++	}
++
++	return 0;
++}
++
++#ifdef CONFIG_AML_LCD
++
++void board_lcd_detect(void)
++{
++	int ret = 0;
++	int res = 0;
++	u8 value = 0;
++	uchar linebuf[1];
++	struct udevice *bus;
++	struct udevice *dev;
++
++	uclass_get_device_by_seq(UCLASS_I2C, 3, &bus);
++	ret = i2c_get_chip(bus, 0x38, 1, &dev);
++	if (!ret) {
++		res = dm_i2c_read(dev, 0xA8, linebuf, 1);
++		if (!res) {
++			printf("TP05 id=0x%x\n", linebuf[0]);
++			if (linebuf[0] == 0x51) {//old ts050
++				env_set("panel_type", "mipi_0");
++				value = 1;
++				printf("panel_type : mipi_0\n");
++			} else if (linebuf[0] == 0x79) {//new ts050
++				env_set("panel_type", "mipi_2");
++				value = 1;
++				printf("panel_type : mipi_2\n");
++			}
++		}
++	}
++	if (ret || res) {
++		ret = i2c_get_chip(bus, 0x14, 1, &dev);
++		if (!ret) {
++			res = dm_i2c_read(dev, 0x9e, linebuf, 1);
++			if (!res) {
++				printf("TP10 id=0x%x\n", linebuf[0]);
++				if (linebuf[0] == 0x00) {//TS101
++					env_set("panel_type", "mipi_1");
++					value = 1;
++					printf("panel_type : mipi_1\n");
++				}
++			}
++		}
++	}
++
++	env_set_ulong("mipi_lcd_exist", value);
++	printf("mipi_lcd_exist : %d\n", value);
++}
++#endif /* CONFIG_AML_LCD */
++
++static void select_fdtfile(void)
++{
++	phys_size_t ddr_size = (((readl(SYSCTRL_SEC_STATUS_REG4)) & ~0xffffUL) << 4);
++
++	switch (ddr_size) {
++	case 0x100000000:
++		env_set("fdtfile", "amlogic/amlogic-t7-a311d2-corelab-tvpro-4g.dtb");
++		break;
++	case 0x200000000:
++		env_set("fdtfile", "amlogic/amlogic-t7-a311d2-corelab-tvpro-8g.dtb");
++		break;
++	default:
++		printf("Unsupported CoreLab TVPro memory size: %llu\n", (unsigned long long)ddr_size);
++		env_set("fdtfile", "unsupported.dtb");
++		break;
++	}
++}
++
++
++#ifdef CONFIG_AML_HDMITX21
++static void hdmitx_set_hdmi_5v(void)
++{
++}
++#endif
++void board_init_mem(void) {
++	#if 1
++	/* config bootm low size, make sure whole dram/psram space can be used */
++	phys_size_t ram_size;
++	char *env_tmp;
++	env_tmp = env_get("bootm_size");
++	if (!env_tmp) {
++		ram_size = ((0x100000000 <= ((readl(SYSCTRL_SEC_STATUS_REG4) &
++				0xFFFFFFFF0000) << 4)) ? 0xe0000000 :
++					(((readl(SYSCTRL_SEC_STATUS_REG4)) &
++					0xFFFFFFFF0000) << 4));
++		env_set_hex("bootm_low", 0);
++		env_set_hex("bootm_size", ram_size);
++	}
++	#endif
++}
++
++static void set_update_key_pull_up(void)
++{
++	uint32_t val = readl(PADCTRL_GPIOD_PULL_UP);
++	val |= (1u << 4u);
++	writel(val, PADCTRL_GPIOD_PULL_UP);
++}
++
++int board_init(void)
++{
++	printf("board init\n");
++
++	/* The non-secure watchdog is enabled in BL2 TEE, disable it */
++	run_command("watchdog off", 0);
++	printf("watchdog disable\n");
++
++	aml_set_bootsequence(0);
++	//Please keep try usb boot first in board_init, as other init before usb may cause burning failure
++#if defined(CONFIG_AML_V3_FACTORY_BURN) && defined(CONFIG_AML_V3_USB_TOOl)
++	if ((0x1b8ec003 != readl(SYSCTRL_SEC_STICKY_REG2)) && (0x1b8ec004 != readl(SYSCTRL_SEC_STICKY_REG2)))
++	{ aml_v3_factory_usb_burning(0, gd->bd); }
++#endif//#if defined(CONFIG_AML_V3_FACTORY_BURN) && defined(CONFIG_AML_V3_USB_TOOl)
++
++#if 0 //bypass below operations for pxp
++	active_clk();
++#endif
++	pinctrl_devices_active(PIN_CONTROLLER_NUM);
++
++	set_update_key_pull_up();
++
++	return 0;
++}
++
++
++int board_late_init(void)
++{
++	// Set boot source
++	board_set_boot_source();
++
++	printf("board late init\n");
++	env_set("defenv_para", "-c -b0");
++	aml_board_late_init_front(NULL);
++	get_stick_reboot_flag_mbx();
++
++	/*
++	 * Set the default value of mipi_lcd_exist to prevent
++	 * the subsequent code from getting the value of mipi_lcd_exist as NULL,
++	 * which may cause a crash
++	 * eg: func do_edid in file cmd/amlogic/cmd_hdmitx21.c
++	 */
++	char *mipi_lcd_exist = NULL;
++	mipi_lcd_exist = env_get("mipi_lcd_exist");
++	if(!mipi_lcd_exist) {
++		printf("env mipi_lcd_exist not found, set to 0 default\n");
++		env_set("mipi_lcd_exist", "0");
++	}
++
++	// Select fdtfile
++	select_fdtfile();
++#ifdef CONFIG_AML_VPU
++	vpu_probe();
++#endif
++#ifdef CONFIG_AML_HDMITX21
++	hdmitx_set_hdmi_5v();
++	hdmitx21_chip_type_init(MESON_CPU_ID_T7);
++	hdmitx21_init();
++#endif
++#ifdef CONFIG_CMD_SND
++	/* Bandgap for HDMITX */
++	writel(0x0b4242, ANACTRL_HDMIPHY_CTRL0);
++	/* pinmux HDMITX_HPD_IN: GPIOW_15,  */
++	update_bits(PADCTRL_PIN_MUX_REGN, 0xf << 28, 0x1 << 28);
++	earcrx_init(EARC_RX_ANA_V2);
++#endif
++#ifdef CONFIG_AML_VPP
++	vpp_init();
++#endif
++#ifdef CONFIG_RX_RTERM
++	rx_set_phy_rterm();
++#endif
++#ifdef CONFIG_AML_VOUT
++	vout_probe();
++#endif
++#ifdef CONFIG_AML_LCD
++	board_lcd_detect();
++	lcd_probe();
++#endif
++	/* The board id is used to determine if the NN needs to adjust voltage */
++	switch (readl(SYSCTRL_SEC_STATUS_REG4) >> 8 & 0xff) {
++	case 2:
++		/* The NN needs to adjust the voltage */
++		env_set_ulong("nn_adj_vol", 1);
++		break;
++	default:
++		/* The NN does not need to adjust the voltage */
++		env_set_ulong("nn_adj_vol", 0);
++	}
++
++	aml_board_late_init_tail(NULL);
++	return 0;
++}
++
++phys_size_t get_effective_memsize(void)
++{
++	phys_size_t ddr_size;
++
++	// >>16 -> MB, <<20 -> real size, so >>16<<20 = <<4
++#if defined(CONFIG_SYS_MEM_TOP_HIDE)
++	ddr_size = (readl(SYSCTRL_SEC_STATUS_REG4) & ~0xffffUL) << 4;
++	return (ddr_size - CONFIG_SYS_MEM_TOP_HIDE);
 +#else
-+#define CONFIG_DTB_LOAD  "imgread dtb _aml_dtb ${dtb_mem_addr} || " \
-+						 "if test ${boot_source} = emmc; then "\
-+							"echo Load dtb/${fdtfile} from eMMC (1:1) ...;" \
-+							"load mmc 1:1 ${dtb_mem_addr} dtb/${fdtfile};" \
-+						 "else if test ${boot_source} = sd; then "\
-+							"echo Load dtb/${fdtfile} from SD (0:1) ...;" \
-+							"load mmc 0:1 ${dtb_mem_addr} dtb/${fdtfile};" \
-+						 "fi;fi;"
-+#endif//#ifdef CONFIG_DTB_BIND_KERNEL    //load dtb from kernel, such as boot partition
++	ddr_size = (readl(SYSCTRL_SEC_STATUS_REG4) & ~0xffffUL) << 4;
++	return ddr_size;
++#endif /* CONFIG_SYS_MEM_TOP_HIDE */
 +
-+/* args/envs */
-+#define CONFIG_SYS_MAXARGS  64
++}
 +
-+#ifdef CONFIG_CMD_USB
-+#define BOOT_TARGET_DEVICES_USB(func) func(USB, usb, 0)
-+#else
-+#define BOOT_TARGET_DEVICES_USB(func)
++phys_size_t get_ddr_info_size(void)
++{
++	phys_size_t ddr_size = (((readl(SYSCTRL_SEC_STATUS_REG4)) & ~0xffffUL) << 4);
++
++	return ddr_size;
++}
++
++ulong board_get_usable_ram_top(ulong total_size)
++{
++	unsigned long top = gd->ram_top;
++
++	if (top >= 0xE0000000UL) {
++		return 0xE0000000UL;
++	}
++	return top;
++}
++
++static struct mm_region bd_mem_map[] = {
++	{
++		.virt = 0x00000000UL,
++		.phys = 0x00000000UL,
++		.size = 0x05100000UL,
++		.attrs = PTE_BLOCK_MEMTYPE(MT_NORMAL) |
++			 PTE_BLOCK_INNER_SHARE
++	}, {
++		.virt = 0x09000000UL,
++		.phys = 0x09000000UL,
++		.size = 0x77000000UL,
++		.attrs = PTE_BLOCK_MEMTYPE(MT_NORMAL) |
++			 PTE_BLOCK_INNER_SHARE
++	}, {
++		.virt = 0x80000000UL,
++		.phys = 0x80000000UL,
++		.size = 0x80000000UL,
++		.attrs = PTE_BLOCK_MEMTYPE(MT_DEVICE_NGNRNE) |
++			 PTE_BLOCK_NON_SHARE |
++			 PTE_BLOCK_PXN | PTE_BLOCK_UXN
++	}, {
++		/* List terminator */
++		0,
++	}
++};
++
++struct mm_region *mem_map = bd_mem_map;
++
++int mach_cpu_init(void) {
++	//printf("\nmach_cpu_init\n");
++#ifdef 	CONFIG_UPDATE_MMU_TABLE
++	unsigned long nddrSize = ((0x100000000 <= ((readl(SYSCTRL_SEC_STATUS_REG4) &
++				0xFFFFFFFF0000) << 4)) ? 0xe0000000 :
++				(((readl(SYSCTRL_SEC_STATUS_REG4)) &
++				0xFFFFFFFF0000) << 4));
++
++	if (nddrSize >= 0xe0000000) {
++		bd_mem_map[1].size = 0xe0000000UL - bd_mem_map[1].phys;
++		bd_mem_map[2].virt = 0xe0000000UL;
++		bd_mem_map[2].phys = 0xe0000000UL;
++		bd_mem_map[2].size = 0x20000000UL;
++	}
++
++#endif
++	return 0;
++}
++
++int ft_board_setup(void *blob, bd_t *bd)
++{
++	/* eg: bl31/32 rsv */
++	return 0;
++}
++
++/* partition table for spinor flash */
++#ifdef CONFIG_SPI_FLASH
++static const struct mtd_partition spiflash_partitions[] = {
++	{
++		.name = "env",
++		.offset = 0,
++		.size = 1 * SZ_256K,
++	},
++	{
++		.name = "dtb",
++		.offset = 0,
++		.size = 1 * SZ_256K,
++	},
++	{
++		.name = "boot",
++		.offset = 0,
++		.size = 2 * SZ_1M,
++	},
++	/* last partition get the rest capacity */
++	{
++		.name = "user",
++		.offset = MTDPART_OFS_APPEND,
++		.size = MTDPART_SIZ_FULL,
++	}
++};
++
++const struct mtd_partition *get_spiflash_partition_table(int *partitions)
++{
++	*partitions = ARRAY_SIZE(spiflash_partitions);
++	return spiflash_partitions;
++}
++#endif /* CONFIG_SPI_FLASH */
++
++#ifdef CONFIG_MESON_NFC
++static struct mtd_partition normal_partition_info[] = {
++{
++	.name = BOOT_BL2E,
++	.offset = 0,
++	.size = 0,
++},
++{
++	.name = BOOT_BL2X,
++	.offset = 0,
++	.size = 0,
++},
++{
++	.name = BOOT_DDRFIP,
++	.offset = 0,
++	.size = 0,
++},
++{
++	.name = BOOT_DEVFIP,
++	.offset = 0,
++	.size = 0,
++},
++{
++	.name = "logo",
++	.offset = 0,
++	.size = 2*SZ_1M,
++},
++{
++	.name = "recovery",
++	.offset = 0,
++	.size = 16*SZ_1M,
++},
++{
++	.name = "boot",
++	.offset = 0,
++	.size = 16*SZ_1M,
++},
++{
++	.name = "system",
++	.offset = 0,
++	.size = 64*SZ_1M,
++},
++/* last partition get the rest capacity */
++{
++	.name = "data",
++	.offset = MTDPART_OFS_APPEND,
++	.size = MTDPART_SIZ_FULL,
++},
++};
++
++struct mtd_partition *get_aml_mtd_partition(void)
++{
++        return normal_partition_info;
++}
++
++int get_aml_partition_count(void)
++{
++        return ARRAY_SIZE(normal_partition_info);
++}
++
 +#endif
 +
-+#ifndef BOOT_TARGET_DEVICES
-+#define BOOT_TARGET_DEVICES(func) \
-+    BOOT_TARGET_DEVICES_USB(func) \
-+    func(MMC, mmc, 0) \
-+    func(MMC, mmc, 1) \
-+    func(PXE, pxe, na) \
-+    func(DHCP, dhcp, na)
-+#endif
++/* partition table */
++/* partition table for spinand flash */
++#if (defined(CONFIG_SPI_NAND) || defined(CONFIG_MTD_SPI_NAND))
++static const struct mtd_partition spinand_partitions[] = {
++	{
++		.name = "logo",
++		.offset = 0,
++		.size = 2 * SZ_1M,
++	},
++	{
++		.name = "recovery",
++		.offset = 0,
++		.size = 16 * SZ_1M,
++	},
++	{
++		.name = "boot",
++		.offset = 0,
++		.size = 16 * SZ_1M,
++	},
++	{
++		.name = "system",
++		.offset = 0,
++		.size = 64 * SZ_1M,
++	},
++	/* last partition get the rest capacity */
++	{
++		.name = "data",
++		.offset = MTDPART_OFS_APPEND,
++		.size = MTDPART_SIZ_FULL,
++	}
++};
++const struct mtd_partition *get_partition_table(int *partitions)
++{
++	*partitions = ARRAY_SIZE(spinand_partitions);
++	return spinand_partitions;
++}
++#endif /* CONFIG_SPI_NAND */
 +
-+#include <config_distro_bootcmd.h>
-+
-+#ifdef CONFIG_HDMITX_ONLY
-+#define CONFIG_EXTRA_HDMI_ENV_SETTINGS \
-+	"panel_type=edp_0\0" \
-+	"outputmode=1080p60hz\0" \
-+	"storeargs_hdmitx="\
-+		"setenv bootargs ${bootargs} "\
-+		"lcd_ctrl=${lcd_ctrl} "\
-+		"outputmode=${outputmode} hdmitx=${cecconfig},${colorattribute};"\
-+		"\0"\
-+	"init_display_hdmitx="\
-+		"hdmitx hpd;hdmitx get_parse_edid;hdmitx edid;dovi process;"\
-+		"osd open;osd clear;run load_bmp_logo;bmp scale;vout output ${outputmode};"\
-+		"dovi set;dovi pkg;vpp hdrpkt;"\
-+		"\0"
-+#else
-+#define CONFIG_EXTRA_HDMI_ENV_SETTINGS \
-+	"panel_type=mipi_0\0" \
-+	"panel1_type=vbyone_1\0" \
-+	"panel2_type=lvds_1\0" \
-+	"lcd1_ctrl=0x00000000\0" \
-+	"lcd2_ctrl=0x00000000\0" \
-+	"outputmode=panel\0" \
-+	"outputmode2=1080p60hz\0" \
-+	"storeargs_hdmitx="\
-+		"if test ${mipi_lcd_exist} != 1; then "\
-+			"setenv vout2_args ;"\
-+		"else "\
-+			"setenv vout2_args vout2=${outputmode2},enable;"\
-+		"fi;"\
-+		"setenv bootargs ${bootargs} "\
-+		"lcd_ctrl=${lcd_ctrl} "\
-+		"outputmode=${outputmode} "\
-+		"${vout2_args} "\
-+		"hdr_policy=${hdr_policy} hdr_priority=${hdr_priority};"\
-+		"\0"\
-+	"init_display_hdmitx="\
-+		"hdmitx hpd;hdmitx get_parse_edid;hdmitx edid;dovi process;"\
-+		"setenv outputmode2 ${hdmimode};"\
-+		"osd dual_logo;"\
-+		"\0"
-+#endif
-+#define CONFIG_EXTRA_ENV_SETTINGS \
-+       "bootcmd_spi=test.s \"$boot_source\" = \"spi\" && sf probe && "\
-+           "sf read $loadaddr 0x4c8000 0x8000 && script\0"\
-+        "fdt_addr_r=0x01000000\0"\
-+        "fdtoverlay_addr_r=0x00a00000\0"\
-+        "fdtaddr=0x01000000\0"\
-+        "kernel_addr_r=0x01080000\0"\
-+        "pxefile_addr_r=0x00010000\0"\
-+        "scriptaddr=0x00010000\0" \
-+        "ramdisk_addr_r=0x10000000\0"\
-+        "kernel_comp_addr_r=0x0d080000\0"\
-+        "kernel_comp_size=0x2000000\0"\
-+        "pxeuuid=00000000-0000-0000-0000-000000000000\0"\
-+        "bootfile=\0"\
-+        "fdtfile=amlogic/amlogic-t7-a311d2-aoc-65t33z-4g.dtb\0" \
-+        CONFIG_EXTRA_ENV_SETTINGS_BASE \
-+        "silent=1\0"\
-+        "loadaddr_kernel=0x01080000\0"\
-+		"dv_fw_addr=0xa00000\0"\
-+        "otg_device=1\0" \
-+        "lcd_ctrl=0x00000000\0" \
-+        "lcd_debug=0x00000000\0" \
-+        "hdmimode=none\0" \
-+		"colorattribute=444,8bit\0"\
-+		"vout_init=enable\0" \
-+        "display_width=1920\0" \
-+        "display_height=1080\0" \
-+		"hdmichecksum=0x00000000\0" \
-+        "display_bpp=24\0" \
-+        "display_color_index=24\0" \
-+        "display_layer=osd0\0" \
-+        "display_color_fg=0xffff\0" \
-+        "display_color_bg=0\0" \
-+        "dtb_mem_addr=0x01000000\0" \
-+        "fb_addr=0x00300000\0" \
-+        "fb_width=1920\0" \
-+        "fb_height=1080\0" \
-+        "frac_rate_policy=1\0" \
-+        "hdr_policy=0\0" \
-+        "usb_burning=" CONFIG_USB_TOOL_ENTRY "\0" \
-+        "fdt_high=0x20000000\0"\
-+        "sdcburncfg=aml_sdc_burn.ini\0"\
-+        "EnableSelinux=permissive\0" \
-+        "lock=10101000\0"\
-+        "board=kvim4\0"\
-+        "osd_reverse=0\0"\
-+        "video_reverse=0\0"\
-+        "edid_14_dir=/odm/etc/tvconfig/hdmi/port1_14.bin\0" \
-+        "edid_20_dir=/odm/etc/tvconfig/hdmi/port1_20.bin\0" \
-+        "edid_select=0\0" \
-+        "port_map=0x4321\0" \
-+        "cec_fun=0x2F\0" \
-+        "logic_addr=0x0\0" \
-+        "cec_ac_wakeup=1\0" \
-+	CONFIG_EXTRA_HDMI_ENV_SETTINGS \
-+        "initargs="\
-+            "rootflags=data=writeback rw rootfstype=ext4" CONFIG_KNL_LOG_LEVEL "no_console_suspend earlycon=aml-uart,0xfe078000 fsck.repair=yes net.ifnames=0 "\
-+            "ramoops.pstore_en=1 ramoops.record_size=0x8000 ramoops.console_size=0x4000 loop.max_part=4 "\
-+			"scsi_mod.scan=async xhci_hcd.quirks=0x800000 scramble_reg=0xfe02e030 gamma=0 "\
-+            "khadas_board=VIM4 boot_source=${boot_source} "\
-+            "\0"\
-+        "upgrade_check="\
-+			"run upgrade_check_base;"\
-+			"\0"\
-+		"storeargs="\
-+			"get_bootloaderversion;" \
-+			"run storeargs_base;"\
-+			"setenv bootargs ${bootargs} init_on_alloc=0 "\
-+				"nn_adj_vol=${nn_adj_vol};"\
-+			"run storeargs_hdmitx;"\
-+            "run cmdline_keys;"\
-+            "\0"\
-+	"cec_init="\
-+		"echo cec_ac_wakeup=${cec_ac_wakeup}; "\
-+		"if test ${cec_ac_wakeup} = 1; then "\
-+			"cec ${logic_addr} ${cec_fun}; "\
-+			"if test ${edid_select} = 1111; then "\
-+				"hdmirx init ${port_map} ${edid_20_dir}; "\
-+			"else "\
-+				"hdmirx init ${port_map} ${edid_14_dir}; "\
-+			"fi;"\
-+		"fi;"\
-+	"\0"\
-+        "switch_bootmode="\
-+            "get_rebootmode;"\
-+            "setenv bootargs ${bootargs} reboot_mode=${reboot_mode};"\
-+            "echo reboot_mode : ${reboot_mode};"\
-+            "if test ${reboot_mode} = factory_reset; then "\
-+				"run recovery_from_flash;"\
-+            "else if test ${reboot_mode} = update; then "\
-+				"run update;"\
-+            "else if test ${reboot_mode} = cold_boot; then "\
-+				"echo cold boot;"\
-+            "else if test ${reboot_mode} = fastboot; then "\
-+				"fastboot 1;"\
-+            "fi;fi;fi;fi;"\
-+            "\0" \
-+		"storeboot="\
-+			"run storeboot_base;"\
-+			"\0"\
-+		"update="\
-+			"run update_base;"\
-+			"\0"\
-+		"enter_fastboot="\
-+			"fastboot 1;"\
-+			"\0"\
-+		"recovery_from_fat_dev="\
-+			"run recovery_from_fat_dev_base;"\
-+			"\0"\
-+		"recovery_from_udisk="\
-+			"run recovery_from_udisk_base;"\
-+			"\0"\
-+		"recovery_from_sdcard="\
-+			"run recovery_from_sdcard_base;"\
-+			"\0"\
-+		"recovery_from_flash="\
-+			"run recovery_from_flash_base;"\
-+			"\0"\
-+        "load_bmp_logo="\
-+            "if load mmc 0:2 ${loadaddr} /usr/share/fenix/logo/logo.bmp || load mmc 1:2 ${loadaddr} /usr/share/fenix/logo/logo.bmp || load mmc 1:3 ${loadaddr} /usr/share/fenix/logo/logo.bmp; then "\
-+                "bmp display ${loadaddr};"\
-+                "bmp scale;"\
-+            "fi;"\
-+			"\0"\
-+        "init_display="\
-+			"run init_display_hdmitx;"\
-+			"\0"\
-+        "check_display="\
-+			"run init_display; "\
-+			"\0"\
-+        "cmdline_keys="\
-+            "setenv region_code US;"\
-+            "if keyman init 0x1234; then "\
-+                "if keyman read region_code ${loadaddr} str; then fi;"\
-+                "if keyman read deviceid ${loadaddr} str; then "\
-+                    "setenv bootargs ${bootargs} androidboot.deviceid=${deviceid};"\
-+                "fi;"\
-+            "fi;"\
-+            "if printenv usid; then "\
-+                "setenv bootargs ${bootargs} androidboot.serialno=${usid};"\
-+                "setenv serial ${usid}; setenv serial# ${usid};"\
-+            "else "\
-+                "setenv bootargs ${bootargs} androidboot.serialno=an400${cpu_id};"\
-+                "setenv serial kvim4${cpu_id}; setenv serial# kvim4${cpu_id};"\
-+            "fi;"\
-+            "setenv bootargs ${bootargs} mac=${eth_mac} ;"\
-+            "\0"\
-+        "upgrade_key="\
-+            "if gpio input GPIOD_4; then "\
-+                "echo detect upgrade key; run update;"\
-+            "fi;"\
-+            "\0"\
-+        "updateu="\
-+            "if tftp 1080000 u-boot.bin.signed; then "\
-+                "store boot_write bootloader 1080000 $filesize;"\
-+            "fi;"\
-+            "\0"\
-+        BOOTENV\
-+        "pxe_boot=dhcp; pxe get && pxe boot\0"\
-+        "bootcmd_storeboot=run storeboot\0"\
-+        "boot_targets=spi usb0 mmc0 mmc1 storeboot pxe dhcp\0"
-+
-+#define CONFIG_PREBOOT  \
-+            "run upgrade_check;"\
-+            "run check_display;"\
-+            "run storeargs;"\
-+            "run switch_bootmode;"
-+
-+#ifndef CONFIG_HDMITX_ONLY
-+/* dual logo, normal boot */
-+#define CONFIG_DUAL_LOGO \
-+	"setenv outputmode2 ${hdmimode};"\
-+	"setenv display_layer viu2_osd0;vout2 prepare ${outputmode2};"\
-+	"osd open;osd clear;run load_bmp_logo;vout2 output ${outputmode2};bmp scale;"\
-+	"if test ${outputmode2} = ${hmdimode}; then "\
-+		"dovi set;dovi pkg;vpp hdrpkt;"\
-+	"fi; "\
-+	"if test ${mipi_lcd_exist} = 1; then "\
-+		"if test ${panel_type} = mipi_1; then "\
-+			"setenv fb_width 1920;"\
-+			"setenv fb_height 1200;"\
-+		"else "\
-+			"setenv fb_width 1080;"\
-+			"setenv fb_height 1920;"\
-+		"fi;"\
-+	"fi; "\
-+	"setenv display_layer osd0;osd open;osd clear;"\
-+	"run load_bmp_logo;bmp scale;vout output ${outputmode};"\
-+	"if test ${outputmode} = ${hmdimode}; then "\
-+		"dovi set;dovi pkg;vpp hdrpkt;"\
-+	"fi; "\
-+	"\0"\
-+
-+/* dual logo, factory_reset boot, recovery always displays on panel */
-+#define CONFIG_RECOVERY_DUAL_LOGO \
-+	"setenv outputmode2 ${hdmimode};"\
-+	"setenv display_layer viu2_osd0;vout2 prepare ${outputmode2};"\
-+	"osd open;osd clear;run load_bmp_logo;vout2 output ${outputmode2};bmp scale;"\
-+	"if test ${outputmode2} = ${hmdimode}; then "\
-+		"dovi set;dovi pkg;vpp hdrpkt;"\
-+	"fi; "\
-+	"setenv display_layer osd0;osd open;osd clear;"\
-+	"run load_bmp_logo;bmp scale;vout output ${outputmode};"\
-+	"if test ${outputmode} = ${hmdimode}; then "\
-+		"dovi set;dovi pkg;vpp hdrpkt;"\
-+	"fi; "\
-+	"\0"\
-+
-+/* single logo */
-+#define CONFIG_SINGLE_LOGO \
-+	"if test ${mipi_lcd_exist} = 1; then "\
-+		"if test ${panel_type} = mipi_1; then "\
-+			"setenv fb_width 1920;"\
-+			"setenv fb_height 1200;"\
-+		"else "\
-+			"setenv fb_width 1080;"\
-+			"setenv fb_height 1920;"\
-+		"fi;"\
-+	"fi; "\
-+	"setenv display_layer osd0;osd open;osd clear;"\
-+	"run load_bmp_logo;bmp scale;vout output ${outputmode};"\
-+	"if test ${outputmode} = ${hmdimode}; then "\
-+		"dovi set;dovi pkg;vpp hdrpkt;"\
-+	"fi; "\
-+	"\0"
-+#endif
-+
-+/* #define CONFIG_ENV_IS_NOWHERE  1 */
-+#define CONFIG_ENV_SIZE   (64*1024)
-+#define CONFIG_FIT 1
-+#define CONFIG_OF_LIBFDT 1
-+#define CONFIG_ANDROID_BOOT_IMAGE 1
-+#define CONFIG_SYS_BOOTM_LEN (64<<20) /* Increase max gunzip size*/
-+
-+/* ATTENTION */
-+/* DDR configs move to board/amlogic/[board]/firmware/timing.c */
-+
-+/* running in sram */
-+//#define UBOOT_RUN_IN_SRAM
-+#ifdef UBOOT_RUN_IN_SRAM
-+#define CONFIG_SYS_INIT_SP_ADDR                (0x00300000)
-+/* Size of malloc() pool */
-+#define CONFIG_SYS_MALLOC_LEN                (256*1024)
-+#else
-+#define CONFIG_SYS_INIT_SP_ADDR                (0x00300000)
-+#define CONFIG_SYS_MALLOC_LEN                (96*1024*1024)
-+#endif
-+
-+//#define CONFIG_NR_DRAM_BANKS            1
-+/* ddr functions */
-+#define DDR_FULL_TEST            0 //0:disable, 1:enable. ddr full test
-+#define DDR_LOW_POWER            0 //0:disable, 1:enable. ddr clk gate for lp
-+#define DDR_ZQ_PD                0 //0:disable, 1:enable. ddr zq power down
-+#define DDR_USE_EXT_VREF         0 //0:disable, 1:enable. ddr use external vref
-+#define DDR4_TIMING_TEST         0 //0:disable, 1:enable. ddr4 timing test function
-+#define DDR_PLL_BYPASS           0 //0:disable, 1:enable. ddr pll bypass function
-+
-+/* storage: emmc/nand/sd */
-+#define CONFIG_ENV_OVERWRITE
-+/* #define     CONFIG_CMD_SAVEENV */
-+/* fixme, need fix*/
-+
-+#if (defined(CONFIG_ENV_IS_IN_AMLNAND) || defined(CONFIG_ENV_IS_IN_MMC)) && defined(CONFIG_STORE_COMPATIBLE)
-+#error env in amlnand/mmc already be compatible;
-+#endif
-+
-+/*
-+*                storage
-+*        |---------|---------|
-+*        |                    |
-+*        emmc<--Compatible-->nand
-+*                    |-------|-------|
-+*                    |        |
-+*                    MTD<-Exclusive->NFTL
-+*                    |
-+*            |***************|***************|
-+*            slc-nand    SPI-nand    SPI-nor
-+*            (raw nand)
-+*/
-+/* axg only support slc nand */
-+/* swither for mtd nand which is for slc only. */
-+
-+
-+#if defined(CONFIG_AML_NAND) && defined(CONFIG_MESON_NFC)
-+#error CONFIG_AML_NAND/CONFIG_MESON_NFC can not support at the sametime;
-+#endif
-+
-+#if (defined(CONFIG_AML_NAND) || defined(CONFIG_MESON_NFC)) && defined(CONFIG_MESON_FBOOT)
-+#error CONFIG_AML_NAND/CONFIG_MESON_NFC CONFIG _MESON_FBOOT can not support at the sametime;
-+#endif
-+
-+#if defined(CONFIG_SPI_NAND) && defined(CONFIG_MTD_SPI_NAND) && defined(CONFIG_MESON_NFC)
-+#error CONFIG_SPI_NAND/CONFIG_MTD_SPI_NAND/CONFIG_MESON_NFC can not support at the sametime;
-+#endif
-+
-+/* #define        CONFIG_AML_SD_EMMC 1 */
-+#ifdef        CONFIG_AML_SD_EMMC
-+    #define     CONFIG_GENERIC_MMC 1
-+    #define     CONFIG_CMD_MMC 1
-+    #define CONFIG_CMD_GPT 1
-+    #define    CONFIG_SYS_MMC_ENV_DEV 1
-+    #define CONFIG_EMMC_DDR52_EN 0
-+    #define CONFIG_EMMC_DDR52_CLK 35000000
-+#endif
-+#define        CONFIG_PARTITIONS 1
-+#if 0
-+#define     CONFIG_SYS_NO_FLASH  1
-+#endif
-+
-+#if defined CONFIG_MESON_NFC || defined CONFIG_SPI_NAND || defined CONFIG_MTD_SPI_NAND
-+    #define CONFIG_SYS_MAX_NAND_DEVICE  2
-+#endif
-+
-+/* vpu */
-+#define AML_VPU_CLK_LEVEL_DFT 7
-+/* LCD */
-+
-+/* osd */
-+#define OSD_SCALE_ENABLE
-+#define AML_OSD_HIGH_VERSION
-+#define AML_T7_DISPLAY
-+#define VEHICLE_CONFIG
-+
-+/* USB
-+ * Enable CONFIG_MUSB_HCD for Host functionalities MSC, keyboard
-+ * Enable CONFIG_MUSB_UDD for Device functionalities.
-+ */
-+/* #define CONFIG_MUSB_UDC        1 */
-+/* #define CONFIG_CMD_USB 1 */
-+
-+#define USB_PHY2_PLL_PARAMETER_1    0x09400414
-+#define USB_PHY2_PLL_PARAMETER_2    0x927e0000
-+#define USB_PHY2_PLL_PARAMETER_3    0xAC5F49E5
-+
-+#define USB_G12x_PHY_PLL_SETTING_1    (0xfe18)
-+#define USB_G12x_PHY_PLL_SETTING_2    (0xfff)
-+#define USB_G12x_PHY_PLL_SETTING_3    (0x78000)
-+#define USB_G12x_PHY_PLL_SETTING_4    (0xe0004)
-+#define USB_G12x_PHY_PLL_SETTING_5    (0xe000c)
-+
-+#define AML_TXLX_USB        1
-+#define AML_USB_V2             1
-+#define USB_GENERAL_BIT         3
-+#define USB_PHY21_BIT           4
-+
-+/* UBOOT fastboot config */
-+
-+
-+/* UBOOT factory usb/sdcard burning config */
-+
-+/* net */
-+#define CONFIG_CMD_NET   1
-+#define CONFIG_ETH_DESIGNWARE
-+#if defined(CONFIG_CMD_NET)
-+    #define CONFIG_DESIGNWARE_ETH 1
-+    #define CONFIG_PHYLIB    1
-+    #define CONFIG_NET_MULTI 1
-+    #define CONFIG_CMD_PING 1
-+    #define CONFIG_CMD_DHCP 1
-+    #define CONFIG_CMD_RARP 1
-+    #define CONFIG_HOSTNAME        "arm_gxbb"
-+#if 0
-+    #define CONFIG_RANDOM_ETHADDR  1                   /* use random eth addr, or default */
-+#endif
-+	#define CONFIG_ETHADDR         00:15:18:01:81:31   /* Ethernet address */
-+	#define CONFIG_IPADDR          192.168.31.200          /* Our ip address */
-+	#define CONFIG_GATEWAYIP       192.168.31.1           /* Our getway ip address */
-+	#define CONFIG_SERVERIP        192.168.31.230         /* Tftp server ip address */
-+	#define CONFIG_NETMASK         255.255.255.0
-+#endif /* (CONFIG_CMD_NET) */
-+
-+#define MAC_ADDR_NEW  1
-+
-+/* other devices */
-+#define CONFIG_SHA1 1
-+#define CONFIG_MD5 1
-+
-+/* commands */
-+ #define CONFIG_CMD_PLLTEST 1
-+
-+/*file system*/
-+#define CONFIG_DOS_PARTITION 1
-+#define CONFIG_EFI_PARTITION 1
-+/* #define CONFIG_MMC 1 */
-+#define CONFIG_FS_FAT 1
-+#define CONFIG_FS_EXT4 1
-+#define CONFIG_LZO 1
-+
-+#define CONFIG_FAT_WRITE 1
-+#define CONFIG_AML_FACTORY_PROVISION 1
-+
-+/* Cache Definitions */
-+/* #define CONFIG_SYS_DCACHE_OFF */
-+/* #define CONFIG_SYS_ICACHE_OFF */
-+
-+/* other functions */
-+#define CONFIG_LIBAVB        1
-+
-+/* define CONFIG_SYS_MEM_TOP_HIDE 8M space for free buffer */
-+#define CONFIG_SYS_MEM_TOP_HIDE        0x00800000
-+
-+#define CONFIG_CPU_ARMV8
-+
-+//use sha2 command
-+#define CONFIG_CMD_SHA2
-+
-+//use startdsp command
-+#define CONFIG_CMD_STARTDSP
-+
-+//use cache command
-+#define CONFIG_CMD_CACHE
-+
-+//use remapset command
-+#define CONFIG_CMD_REMAPSET
-+
-+//use hardware sha2
-+//#define CONFIG_AML_HW_SHA2
-+
-+//Replace avb2 software SHA256 to utilize armce
-+#define CONFIG_AVB2_UBOOT_SHA256
-+//#define CONFIG_MULTI_DTB    1
-+// use auto select DTB table
 +#ifdef CONFIG_MULTI_DTB
-+    #define CONFIG_T7_3G_SIZE   0xC0000000
-+    #define CONFIG_T7_4G_SIZE   0x100000000
-+    #define CONFIG_T7_6G_SIZE   0x180000000
-+    #define CONFIG_T7_8G_SIZE   0x200000000
++phys_size_t get_ddr_memsize(void)
++{
++	phys_size_t ddr_size = (((readl(SYSCTRL_SEC_STATUS_REG4)) & ~0xffffUL) << 4);
++
++	printf("init board ddr size  %llx\n", ddr_size);
++	env_set_hex("board_ddr_size", ddr_size);
++	return ddr_size;
++}
 +#endif
 +
-+#define CONFIG_RX_RTERM        1
-+#define CONFIG_CMD_HDMIRX   1
-+#define CONFIG_CMD_CEC        1
-+/* define CONFIG_UPDATE_MMU_TABLE for need update mmu */
-+#define    CONFIG_UPDATE_MMU_TABLE
++int checkhw(char * name)
++{
++#ifdef CONFIG_MULTI_DTB
++	cpu_id_t cpu_id;
 +
-+/* support secure boot */
-+#define CONFIG_AML_SECURE_UBOOT   1
++	char loc_name[64] = {0};
++	phys_size_t ddr_size = get_ddr_memsize();
 +
-+#if defined(CONFIG_AML_SECURE_UBOOT)
++	cpu_id = get_cpu_id();
 +
-+/* unify build for generate encrypted bootloader "u-boot.bin.encrypt" */
-+#define CONFIG_AML_CRYPTO_UBOOT   1
-+#ifdef CONFIG_SCS
-+	#define CONFIG_AML_SIGNED_UBOOT   1
++	switch (ddr_size) {
++	case CONFIG_T7_4G_SIZE:
++		if (cpu_id.chip_rev == 0xA || cpu_id.chip_rev == 0xb) {
++			#ifdef CONFIG_HDMITX_ONLY
++			strcpy(loc_name, "t7_a311d2_an400-hdmitx-only\0");
++			#else
++			strcpy(loc_name, "t7_a311d2_an400\0");
++			#endif
++		} else if (cpu_id.chip_rev == 0xC) {
++			#ifdef CONFIG_HDMITX_ONLY
++			strcpy(loc_name, "t7c_a311d2_an400-hdmitx-only-4g\0");
++			#else
++			strcpy(loc_name, "t7c_a311d2_an400-4g\0");
++			#endif
++		}
++		break;
++	case CONFIG_T7_8G_SIZE:
++		if (cpu_id.chip_rev == 0xA || cpu_id.chip_rev == 0xb) {
++			strcpy(loc_name, "t7_a311d2_an400\0");
++		} else if (cpu_id.chip_rev == 0xC) {
++			strcpy(loc_name, "t7c_a311d2_an400-4g\0");
++			//
++		}
++		break;
++	default:
++		printf("DDR size: 0x%llx, multi-dt doesn't support, ", ddr_size);
++		printf("set default t7_a311d2_an400\n");
++		if (cpu_id.chip_rev == 0xA || cpu_id.chip_rev == 0xb) {
++			strcpy(loc_name, "t7_a311d2_an400\0");
++		} else if (cpu_id.chip_rev == 0xC) {
++			strcpy(loc_name, "t7c_a311d2_an400-4g\0");
++			//
++		}
++		break;
++	}
++	printf("init aml_dt to %s\n", loc_name);
++	strcpy(name, loc_name);
++	env_set("aml_dt", loc_name);
++#else
++	env_set("aml_dt", "t7_a311d2_an400\0");
 +#endif
-+/* unify build for generate encrypted kernel image
-+   SRC : "board/amlogic/(board)/boot.img"
-+   DST : "fip/boot.img.encrypt" */
-+/* #define CONFIG_AML_CRYPTO_IMG       1 */
++	return 0;
++}
 +
-+#endif /* CONFIG_AML_SECURE_UBOOT */
++const char * const _board_env_reserv_array0[] = {
++	"model_name",
++	"connector_type",
++	NULL//Keep NULL be last to tell END
++};
 +
-+#define CONFIG_FIP_IMG_SUPPORT  1
++int __attribute__((weak)) mmc_initialize(bd_t *bis){ return 0;}
 +
-+/* config ramdump to debug kernel panic */
-+#define CONFIG_FULL_RAMDUMP
++int __attribute__((weak)) do_bootm(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[]){ return 0;}
 +
-+#define BL32_SHARE_MEM_SIZE  0x800000
-+#define CONFIG_AML_KASLR_SEED
++void __attribute__((weak)) set_working_fdt_addr(ulong addr) {}
 +
-+#endif
++int __attribute__((weak)) ofnode_read_u32_default(ofnode node, const char *propname, u32 def) {return 0;}
 +
-+#undef CONFIG_SYS_CBSIZE
-+#define CONFIG_SYS_CBSIZE 4096
-+
-+#define CONFIG_SYS_VIDEO_LOGO_MAX_SIZE 8192000
-+#define CONFIG_VIDEO_BMP_GZIP 1
-diff --git a/board/khadas/defconfigs/65t33z_defconfig b/board/khadas/defconfigs/65t33z_defconfig
-new file mode 100644
---- /dev/null
-+++ b/board/khadas/defconfigs/65t33z_defconfig
-@@ -0,0 +1,142 @@
-+CONFIG_ARM=y
-+CONFIG_ARCH_MESON=y
-+CONFIG_SYS_TEXT_BASE=0x00000000
-+CONFIG_MESON_T7=y
-+CONFIG_AML_TSENSOR=y
-+CONFIG_AML_TSENSOR_COOL=y
-+CONFIG_DDR_FULL_FW=y
-+CONFIG_DDRFW_TYPE="lpddr4"
-+CONFIG_CHIPSET_NAME="a311d2"
-+CONFIG_BL30_SELECT="65t33z"
-+CONFIG_AOC_65T33Z=y
-+CONFIG_DEBUG_UART_BASE=0xfe078000
-+CONFIG_DEBUG_UART_CLOCK=24000000
-+CONFIG_ARMV8_CRYPTO=y
-+CONFIG_DEBUG_UART=y
-+# CONFIG_ANDROID_BOOT_IMAGE is not set
-+CONFIG_OF_BOARD_SETUP=y
-+CONFIG_BOOTDELAY=2
-+CONFIG_BOARD_LATE_INIT=y
-+# CONFIG_DISPLAY_CPUINFO is not set
-+# CONFIG_DISPLAY_BOARDINFO is not set
-+CONFIG_SYS_PROMPT="65t33z# "
-+CONFIG_AUTOBOOT_KEYED=y
-+CONFIG_AUTOBOOT_PROMPT="Hit SPACE in %d seconds to stop autoboot\n"
-+CONFIG_AUTOBOOT_DELAY_STR="2"
-+CONFIG_AUTOBOOT_STOP_STR=" "
-+# CONFIG_CMD_BDI is not set
-+# CONFIG_CMD_DSPSET is not set
-+CONFIG_CMD_GO=y
-+# CONFIG_CMD_IMI is not set
-+CONFIG_CMD_CLKMSR=y
-+CONFIG_CMD_GPIO=y
-+CONFIG_CMD_I2C=y
-+# CONFIG_CMD_LOADB is not set
-+# CONFIG_CMD_LOADS is not set
-+CONFIG_CMD_MMC=y
-+CONFIG_AML_STORAGE=y
-+# CONFIG_CMD_PINMUX is not set
-+CONFIG_CMD_SF=y
-+CONFIG_CMD_SF_TEST=y
-+CONFIG_CMD_USB=y
-+CONFIG_CMD_SARADC=y
-+CONFIG_CMD_BMP=y
-+CONFIG_CMD_BTRFS=y
-+CONFIG_BOOTLOADER_CONTROL_BLOCK=y
-+CONFIG_CMD_BOOTCTOL_AVB=y
-+CONFIG_CMD_WATCHDOG=y
-+CONFIG_CMD_JTAG=y
-+CONFIG_CMD_INI=y
-+CONFIG_CMD_CFGLOAD=y
-+# CONFIG_CMD_KHADAS_KBI is not set
-+CONFIG_AML_PARTITION=y
-+CONFIG_OF_CONTROL=y
-+CONFIG_OF_EMBED=y
-+CONFIG_DEFAULT_DEVICE_TREE="65t33z"
-+# CONFIG_REGMAP is not set
-+CONFIG_ADC=y
-+CONFIG_SARADC_MESON_G12A=y
-+CONFIG_CLK=y
-+CONFIG_CLK_MESON=y
-+CONFIG_CLK_MESON_T7=y
-+CONFIG_USB_FUNCTION_FASTBOOT=y
-+CONFIG_FASTBOOT_FLASH=y
-+CONFIG_FASTBOOT_FLASH_MMC_DEV=1
-+CONFIG_DM_GPIO=y
-+CONFIG_DM_I2C=y
-+CONFIG_SYS_I2C_MESON=y
-+CONFIG_MISC=y
-+CONFIG_DM_MMC=y
-+CONFIG_MMC_HS400_SUPPORT=y
-+CONFIG_MMC_MESON_GX=y
-+CONFIG_PTBL_MBR=y
-+CONFIG_MTD=y
-+# CONFIG_AML_MTD is not set
-+CONFIG_DM_SPI_FLASH=y
-+CONFIG_SPI_FLASH=y
-+CONFIG_SPI_FLASH_BAR=y
-+CONFIG_SPI_FLASH_WINBOND=y
-+CONFIG_SPI_FLASH_MTD=y
-+CONFIG_PHYLIB=y
-+CONFIG_PHY_REALTEK=y
-+CONFIG_RTL8211E_PINE64_GIGABIT_FIX=y
-+CONFIG_RTL8211X_PHY_FORCE_MASTER=y
-+CONFIG_DM_ETH=y
-+CONFIG_PHY=y
-+CONFIG_AML_USB3_PHY=y
-+CONFIG_AML_USB2_PHY=y
-+CONFIG_PINCTRL=y
-+CONFIG_PINCONF=y
-+CONFIG_PINCTRL_MESON_T7=y
-+CONFIG_DM_REGULATOR=y
-+CONFIG_DM_REGULATOR_FIXED=y
-+CONFIG_DM_REGULATOR_GPIO=y
-+CONFIG_DM_PWM=y
-+CONFIG_PWM_MESON=y
-+CONFIG_DEBUG_UART_MESON=y
-+CONFIG_DEBUG_UART_ANNOUNCE=y
-+CONFIG_DEBUG_UART_SKIP_INIT=y
-+CONFIG_MESON_SERIAL=y
-+CONFIG_SPI=y
-+CONFIG_DM_SPI=y
-+CONFIG_AML_SPICC=y
-+CONFIG_AML_SPIFC=y
-+CONFIG_TEE=y
-+CONFIG_OPTEE=y
-+CONFIG_USB=y
-+CONFIG_DM_USB=y
-+CONFIG_AML_USB=y
-+CONFIG_USB_XHCI_HCD=y
-+CONFIG_USB_XHCI_CRG=y
-+CONFIG_USB_GADGET=y
-+CONFIG_USB_GADGET_CRG=y
-+CONFIG_AML_FACTORY_BURN_LOCAL_UPGRADE=y
-+CONFIG_SD_BURNING_SUPPORT_UI=y
-+CONFIG_AML_V3_FACTORY_BURN=y
-+CONFIG_AML_V3_USB_TOOl=y
-+CONFIG_WDT=y
-+CONFIG_WDT_MESON=y
-+CONFIG_AML_DRIVER=y
-+CONFIG_AML_MEDIA=y
-+CONFIG_AML_VOUT=y
-+CONFIG_AML_OSD=y
-+CONFIG_AML_DOLBY=y
-+CONFIG_AML_VPP=y
-+CONFIG_AML_VPU=y
-+CONFIG_AML_HDMITX=y
-+CONFIG_AML_HDMITX21=y
-+CONFIG_UNIFY_KEY_MANAGE=y
-+CONFIG_SECURE_STORAGE=y
-+CONFIG_SECURE_POWER_CONTROL=y
-+CONFIG_MESON_LEDS_STATE_CONTROL=y
-+CONFIG_EFUSE=y
-+CONFIG_IMAGE_CHECK=y
-+CONFIG_SHA1=y
-+CONFIG_LZ4=y
-+CONFIG_ZSTD=y
-+CONFIG_OF_LIBFDT_OVERLAY=y
-+CONFIG_SMBIOS_MANUFACTURER="aoc"
-+CONFIG_CMD_SETEXPR=y
-+CONFIG_CMD_UUID=y
-+CONFIG_CMD_FS_UUID=y
-+CONFIG_BAUDRATE=921600
-diff --git a/board/khadas/Kconfig b/board/khadas/Kconfig
---- a/board/khadas/Kconfig
-+++ b/board/khadas/Kconfig
-@@ -235,6 +235,10 @@
- choice
- 	prompt "T7 Board"
- 
-+config AOC_65T33Z
-+	bool "AOC 65T33Z"
-+	select TARGET_AOC_65T33Z
-+
- config CORELAB_TVPRO
- 	bool "CoreLab TVPro"
- 	select TARGET_CORELAB_TVPRO
-@@ -247,6 +251,10 @@
- 
- endchoice
- 
-+config TARGET_AOC_65T33Z
-+	bool "AOC 65T33Z board"
-+	depends on AOC_65T33Z
-+
- config TARGET_CORELAB_TVPRO
- 	bool "CoreLab TVPro board"
- 	depends on CORELAB_TVPRO
-@@ -305,3 +313,5 @@
- source "board/khadas/kvim1s/Kconfig"
- 
- source "board/khadas/tvpro/Kconfig"
-+
-+source "board/khadas/65t33z/Kconfig"
-diff --git a/bl33z/Makefile b/bl33z/Makefile
---- a/bl33z/Makefile
-+++ b/bl33z/Makefile
-@@ -87,6 +87,9 @@
- ifeq ($(SOC),kvim4)
- SOC     =   t7
- endif
-+ifeq ($(SOC),65t33z)
-+SOC     =   t7
-+endif
- ifeq ($(SOC),tvpro)
- SOC     =   t7
- endif
++void __attribute__((weak)) md5_wd (unsigned char *input, int len, unsigned char output[16],	unsigned int chunk_sz){}
+-- 
+2.56.0
+
