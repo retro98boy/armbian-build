@@ -279,11 +279,30 @@
 		qcom,micbias4-microvolt = <2000000>;
 		qcom,mbhc-buttons-vthreshold-microvolt = <75000 150000 237000 500000
 							500000 500000 500000 500000>;
-		qcom,mbhc-headset-vthreshold-microvolt = <1700000>;
+		/* Allow margin above the tested headset's 2.06 V reading at 2.7 V bias. */
+		qcom,mbhc-headset-vthreshold-microvolt = <2300000>;
 		qcom,mbhc-headphone-vthreshold-microvolt = <50000>;
+		qcom,hphl-jack-type-normally-closed;
+		qcom,ground-jack-type-normally-closed;
 		qcom,rx-device = <&wcd_rx>;
 		qcom,tx-device = <&wcd_tx>;
 		#sound-dai-cells = <1>;
+		mode-switch;
+
+		port {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			wcd939x_usb: endpoint@0 {
+				reg = <0>;
+				remote-endpoint = <&fsa4480_audio>;
+			};
+
+			wcd939x_usb_hs: endpoint@1 {
+				reg = <1>;
+				remote-endpoint = <&fsa4480_hs_audio>;
+			};
+		};
 	};
 
 	sound {
@@ -296,6 +315,8 @@
 		widgets = "Speaker", "Left Speaker", "Speaker", "Right Speaker";
 		audio-routing = "Left Speaker", "Left OUT",
 				"Right Speaker", "Right OUT",
+				"IN1_HPHL", "HPHL_OUT",
+				"IN2_HPHR", "HPHR_OUT",
 				"AMIC1", "MIC BIAS1",
 				"AMIC2", "MIC BIAS2",
 				"AMIC3", "MIC BIAS3",
@@ -331,6 +352,22 @@
 
 			codec {
 				sound-dai = <&wcd939x 1>, <&swr2 0>, <&lpass_txmacro 0>;
+			};
+
+			platform {
+				sound-dai = <&q6apm>;
+			};
+		};
+
+		wcd-playback-dai-link {
+			link-name = "WCD Playback";
+
+			cpu {
+				sound-dai = <&q6apmbedai RX_CODEC_DMA_RX_0>;
+			};
+
+			codec {
+				sound-dai = <&wcd939x 0>, <&swr1 0>, <&lpass_rxmacro 0>;
 			};
 
 			platform {
@@ -875,7 +912,7 @@
 	status = "okay";
 
 	typec-mux@42 {
-		compatible = "fcs,fsa4480";
+		compatible = "dioo,dio4480";
 		reg = <0x42>;
 
 		vcc-supply = <&vreg_bob1>;
@@ -884,14 +921,23 @@
 		orientation-switch;
 
 		port {
-			fsa4480_hs_sbu_mux: endpoint {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			fsa4480_hs_sbu_mux: endpoint@0 {
+				reg = <0>;
 				remote-endpoint = <&pmic_glink_hs_sbu>;
+			};
+
+			fsa4480_hs_audio: endpoint@1 {
+				reg = <1>;
+				remote-endpoint = <&wcd939x_usb_hs>;
 			};
 		};
 	};
 
 	typec-mux@43 {
-		compatible = "fcs,fsa4480";
+		compatible = "dioo,dio4480";
 		reg = <0x43>;
 
 		vcc-supply = <&vreg_bob1>;
@@ -900,8 +946,17 @@
 		orientation-switch;
 
 		port {
-			fsa4480_sbu_mux: endpoint {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			fsa4480_sbu_mux: endpoint@0 {
+				reg = <0>;
 				remote-endpoint = <&pmic_glink_sbu>;
+			};
+
+			fsa4480_audio: endpoint@1 {
+				reg = <1>;
+				remote-endpoint = <&wcd939x_usb>;
 			};
 		};
 	};

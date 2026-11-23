@@ -1,0 +1,66 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: retro98boy <retro98boy@qq.com>
+Date: Mon, 23 Nov 2026 17:47:13 +0800
+Subject: [PATCH] ASoC: wcd-mbhc: delay buttons on manual Type-C routes
+
+ADC correction on manually routed Type-C headsets can trigger false
+button presses. Enable buttons after correction and debounce the
+transition.
+Ignore these interrupts before changing the button state.
+
+Signed-off-by: retro98boy <retro98boy@qq.com>
+---
+diff --git a/sound/soc/codecs/wcd-mbhc-v2.c b/sound/soc/codecs/wcd-mbhc-v2.c
+index dd77e8bba28fa0acf59b6df5b90f054a3e72ec26..faedead7bdfffd41c383627bd59ea83b96e3b858 100644
+--- a/sound/soc/codecs/wcd-mbhc-v2.c
++++ b/sound/soc/codecs/wcd-mbhc-v2.c
+@@ -703,9 +703,18 @@ static irqreturn_t wcd_mbhc_btn_press_handler(int irq, void *data)
+ 	unsigned long msec_val;
+ 
+ 	mutex_lock(&mbhc->lock);
++	/* Ignore comparator interrupts from manual Type-C detection. */
++	if (mbhc->cfg->typec_manual_audio &&
++	    (jiffies_to_msecs(jiffies - mbhc->jiffies_atreport) <
++	     MBHC_BUTTON_PRESS_THRESHOLD_MIN ||
++	     mbhc->in_swch_irq_handler ||
++	     mbhc->current_plug != MBHC_PLUG_TYPE_HEADSET ||
++	     !wcd_mbhc_read_field(mbhc, WCD_MBHC_DETECTION_DONE)))
++		goto done;
++
+ 	wcd_cancel_btn_work(mbhc);
+ 	mbhc->is_btn_press = true;
+ 	msec_val = jiffies_to_msecs(jiffies - mbhc->jiffies_atreport);
+ 
+ 	/* Too short, ignore button press */
+ 	if (msec_val < MBHC_BUTTON_PRESS_THRESHOLD_MIN)
+@@ -1300,7 +1309,9 @@ static void wcd_correct_swch_plug(struct work_struct *work)
+ 		wcd_mbhc_find_plug_and_report(mbhc, plug_type);
+ 		wcd_mbhc_write_field(mbhc, WCD_MBHC_ADC_MODE, 0);
+ 		wcd_mbhc_write_field(mbhc, WCD_MBHC_ADC_EN, 0);
+-		wcd_mbhc_write_field(mbhc, WCD_MBHC_DETECTION_DONE, 1);
++		/* ADC correction can look like button presses on Type-C headsets. */
++		if (!mbhc->cfg->typec_manual_audio)
++			wcd_mbhc_write_field(mbhc, WCD_MBHC_DETECTION_DONE, 1);
+ 		break;
+ 	default:
+ 		break;
+@@ -1397,10 +1408,17 @@ correct_plug_type:
+ 	 * so that btn press/release interrupt can be generated.
+ 	 * For other plug type, clear the bit.
+ 	 */
+-	if (plug_type == MBHC_PLUG_TYPE_HEADSET)
++	if (plug_type == MBHC_PLUG_TYPE_HEADSET) {
++		if (mbhc->cfg->typec_manual_audio) {
++			/* Debounce the transition from ADC correction to button detection. */
++			mutex_lock(&mbhc->lock);
++			mbhc->jiffies_atreport = jiffies;
++			mutex_unlock(&mbhc->lock);
++		}
+ 		wcd_mbhc_write_field(mbhc, WCD_MBHC_DETECTION_DONE, 1);
+-	else
++	} else {
+ 		wcd_mbhc_write_field(mbhc, WCD_MBHC_DETECTION_DONE, 0);
++	}
+ 
+ 	if (mbhc->mbhc_cb->mbhc_micbias_control)
+ 		wcd_mbhc_adc_update_fsm_source(mbhc, plug_type);

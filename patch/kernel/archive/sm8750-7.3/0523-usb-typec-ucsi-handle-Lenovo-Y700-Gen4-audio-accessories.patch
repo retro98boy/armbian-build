@@ -1,0 +1,137 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: retro98boy <retro98boy@qq.com>
+Date: Mon, 23 Nov 2026 17:47:13 +0800
+Subject: [PATCH] usb: typec: ucsi: handle Lenovo Y700 Gen4 audio accessories
+
+Lenovo Y700 Gen4 firmware can omit the connected bit on the short-edge port.
+Use machine match data to select the affected port. Restore attach and detach
+events, and report the tablet as the power source for passive accessories.
+
+Set the orientation before routing audio on attach. Route audio accessories
+already connected when the driver registers a port.
+
+Signed-off-by: retro98boy <retro98boy@qq.com>
+---
+diff --git a/drivers/usb/typec/ucsi/ucsi.c b/drivers/usb/typec/ucsi/ucsi.c
+index 318d32e588f4a1cecc69543c1659782ff0af77e5..b05d904d46bb03c4b73d20e598e9e9d4bd72c59b 100644
+--- a/drivers/usb/typec/ucsi/ucsi.c
++++ b/drivers/usb/typec/ucsi/ucsi.c
+@@ -849,12 +849,34 @@ static int ucsi_get_connector_status(struct ucsi_connector *con, bool conn_ack)
+ 	u64 command = UCSI_GET_CONNECTOR_STATUS | UCSI_CONNECTOR_NUMBER(con->num);
+ 	size_t size = min(sizeof(con->status),
+ 			  UCSI_MAX_DATA_LENGTH(con->ucsi));
++	bool fix_audio_status = con->num <= BITS_PER_LONG &&
++				(con->ucsi->audio_without_connect_ports & BIT(con->num - 1));
++	bool was_connected = fix_audio_status && UCSI_CONSTAT(con, CONNECTED);
++	bool was_audio = fix_audio_status &&
++			 UCSI_CONSTAT(con, PARTNER_TYPE) == UCSI_CONSTAT_PARTNER_TYPE_AUDIO;
++	bool audio;
+ 	int ret;
+ 
+ 	ret = ucsi_send_command_common(con->ucsi, command, &con->status, size,
+ 				       NULL, 0, conn_ack);
++	if (ret < 0)
++		return ret;
++
++	if (fix_audio_status) {
++		audio = UCSI_CONSTAT(con, PARTNER_TYPE) == UCSI_CONSTAT_PARTNER_TYPE_AUDIO;
++		if (audio && !UCSI_CONSTAT(con, CONNECTED)) {
++			__set_bit((UCSI_CONSTAT_CONNECTED).offset, con->status);
++			/* A passive audio accessory does not supply power. */
++			__set_bit((UCSI_CONSTAT_PWR_DIR).offset, con->status);
++		}
+ 
+-	return ret < 0 ? ret : 0;
++		/* The firmware signals audio attach and detach as partner changes. */
++		if ((audio || was_audio) && was_connected != UCSI_CONSTAT(con, CONNECTED))
++			__set_bit((UCSI_CONSTAT_CHANGE).offset +
++				  __ffs(UCSI_CONSTAT_CONNECT_CHANGE), con->status);
++	}
++
++	return 0;
+ }
+ 
+ static int ucsi_read_pdos(struct ucsi_connector *con,
+@@ -1492,8 +1514,14 @@ static void ucsi_handle_connector_change(struct work_struct *work)
+ 	if (change & UCSI_CONSTAT_CONNECT_CHANGE) {
++		bool audio = UCSI_CONSTAT(con, CONNECTED) &&
++			     UCSI_CONSTAT(con, PARTNER_TYPE) == UCSI_CONSTAT_PARTNER_TYPE_AUDIO;
++
+ 		typec_set_pwr_role(con->port, role);
+ 		ucsi_port_psy_changed(con);
++		if (audio)
++			ucsi_orientation(con);
+ 		ucsi_partner_change(con);
+-		ucsi_orientation(con);
++		if (!audio)
++			ucsi_orientation(con);
+ 
+ 		if (UCSI_CONSTAT(con, CONNECTED)) {
+ 			ucsi_register_partner(con);
+@@ -1954,6 +1982,8 @@ static int ucsi_register_port(struct ucsi *ucsi, struct ucsi_connector *con)
+ 		ucsi_register_partner(con);
+ 		ucsi_pwr_opmode_change(con);
+ 		ucsi_orientation(con);
++		if (UCSI_CONSTAT(con, PARTNER_TYPE) == UCSI_CONSTAT_PARTNER_TYPE_AUDIO)
++			typec_set_mode(con->port, TYPEC_MODE_AUDIO);
+ 		ucsi_port_psy_changed(con);
+ 		if (con->ucsi->cap.features & UCSI_CAP_GET_PD_MESSAGE)
+ 			ucsi_get_partner_identity(con);
+diff --git a/drivers/usb/typec/ucsi/ucsi.h b/drivers/usb/typec/ucsi/ucsi.h
+index dc594388dcd081176daa41b331c681092ad889e5..0b08ad1c3c2fd6aef95d96e43b778917618edd65 100644
+--- a/drivers/usb/typec/ucsi/ucsi.h
++++ b/drivers/usb/typec/ucsi/ucsi.h
+@@ -510,6 +510,8 @@ struct ucsi {
+ 
+ /* USB4 connection can imply that USB communcation is supported */
+ #define UCSI_USB4_IMPLIES_USB	BIT(2)
++	/* Connectors that omit CONNECTED for audio accessories (bit 0 is port 1). */
++	unsigned long audio_without_connect_ports;
+ };
+ 
+ #define UCSI_MAX_DATA_LENGTH(u) (((u)->version < UCSI_VERSION_2_0) ? 0x10 : 0xff)
+diff --git a/drivers/usb/typec/ucsi/ucsi_glink.c b/drivers/usb/typec/ucsi/ucsi_glink.c
+index 1db0c88d817e6d7876bd8d89b8ddf26cfc010048..8428d0f92ccf2c98d263988549342eb03c2d15e1 100644
+--- a/drivers/usb/typec/ucsi/ucsi_glink.c
++++ b/drivers/usb/typec/ucsi/ucsi_glink.c
+@@ -6,6 +6,7 @@
+ #include <linux/auxiliary_bus.h>
+ #include <linux/module.h>
+ #include <linux/mutex.h>
++#include <linux/of.h>
+ #include <linux/of_device.h>
+ #include <linux/property.h>
+ #include <linux/soc/qcom/pdr.h>
+@@ -390,12 +391,21 @@ static const struct of_device_id pmic_glink_ucsi_of_quirks[] = {
+ 	{}
+ };
+ 
++/* The short-edge connector is UCSI port 2. */
++static const unsigned long elden_audio_without_connect_ports = BIT(1);
++
++static const struct of_device_id pmic_glink_ucsi_audio_quirks[] = {
++	{ .compatible = "lenovo,elden", .data = &elden_audio_without_connect_ports },
++	{}
++};
++
+ static int pmic_glink_ucsi_probe(struct auxiliary_device *adev,
+ 				 const struct auxiliary_device_id *id)
+ {
+ 	struct pmic_glink_ucsi *ucsi;
+ 	struct device *dev = &adev->dev;
+ 	const struct of_device_id *match;
++	const unsigned long *audio_ports;
+ 	int ret;
+ 
+ 	ucsi = devm_kzalloc(dev, sizeof(*ucsi), GFP_KERNEL);
+@@ -425,6 +435,10 @@ static int pmic_glink_ucsi_probe(struct auxiliary_device *adev,
+ 	if (match)
+ 		ucsi->ucsi->quirks = *(unsigned long *)match->data;
+ 
++	audio_ports = of_machine_get_match_data(pmic_glink_ucsi_audio_quirks);
++	if (audio_ports)
++		ucsi->ucsi->audio_without_connect_ports = *audio_ports;
++
+ 	ucsi_set_drvdata(ucsi->ucsi, ucsi);
+ 
+ 	device_for_each_child_node_scoped(dev, fwnode) {

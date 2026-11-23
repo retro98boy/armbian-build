@@ -1,0 +1,346 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: retro98boy <retro98boy@qq.com>
+Date: Mon, 23 Nov 2026 17:47:13 +0800
+Subject: [PATCH] ASoC: wcd-mbhc: detect manually routed Type-C headsets
+
+Try swapping MIC and GND when the ADC voltage is outside the headset range
+or below the Qualcomm downstream heuristic of 700 mV.
+
+Use continuous conversions for normal correction on manual Type-C routes.
+Single conversions can read low and clear the microphone jack.
+Keep single conversions for the high-impedance recheck.
+Propagate ADC read errors and restore the detection state after a failed
+cross-connection measurement.
+
+Stop detection work before freeing IRQs. Drain button work before freeing MBHC.
+
+Signed-off-by: retro98boy <retro98boy@qq.com>
+---
+diff --git a/sound/soc/codecs/wcd-mbhc-v2.c b/sound/soc/codecs/wcd-mbhc-v2.c
+index 0a2447d2a0ec8a60ccf1dd4ed015ce59a9c4bf27..dd77e8bba28fa0acf59b6df5b90f054a3e72ec26 100644
+--- a/sound/soc/codecs/wcd-mbhc-v2.c
++++ b/sound/soc/codecs/wcd-mbhc-v2.c
+@@ -2,6 +2,7 @@
+ // Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
+ 
+ #include <linux/module.h>
++#include <linux/regmap.h>
+ #include <linux/init.h>
+ #include <linux/slab.h>
+ #include <linux/device.h>
+@@ -25,6 +26,7 @@
+ #define WCD_MBHC_ADC_HPH_THRESHOLD_MV	75
+ #define WCD_MBHC_ADC_MICBIAS_MV		1800
+ #define WCD_MBHC_FAKE_INS_RETRY		4
++#define WCD_MBHC_TYPEC_SWAP_CHECK_MV	700
+ 
+ #define WCD_MBHC_JACK_MASK (SND_JACK_HEADSET | SND_JACK_LINEOUT | \
+ 			   SND_JACK_MECHANICAL)
+@@ -418,7 +420,7 @@ static void wcd_mbhc_report_plug(struct wcd_mbhc *mbhc, int insertion,
+ static void wcd_cancel_hs_detect_plug(struct wcd_mbhc *mbhc,
+ 				      struct work_struct *work)
+ {
+-	mbhc->hs_detect_work_stop = true;
++	WRITE_ONCE(mbhc->hs_detect_work_stop, true);
+ 	mutex_unlock(&mbhc->lock);
+ 	cancel_work_sync(work);
+ 	mutex_lock(&mbhc->lock);
+@@ -488,7 +490,7 @@ static void wcd_schedule_hs_detect_plug(struct wcd_mbhc *mbhc,
+ 					    struct work_struct *work)
+ {
+ 	WARN_ON(!mutex_is_locked(&mbhc->lock));
+-	mbhc->hs_detect_work_stop = false;
++	WRITE_ONCE(mbhc->hs_detect_work_stop, false);
+ 	schedule_work(work);
+ }
+ 
+@@ -644,6 +646,9 @@ int wcd_mbhc_typec_report_plug(struct wcd_mbhc *mbhc)
+ 	if (mbhc->mbhc_cb->clk_setup)
+ 		mbhc->mbhc_cb->clk_setup(mbhc->component, true);
+ 	wcd_mbhc_write_field(mbhc, WCD_MBHC_L_DET_EN, 1);
++	/* The previous sound card can leave MBHC armed for removal. */
++	if (mbhc->cfg->typec_manual_audio)
++		wcd_mbhc_write_field(mbhc, WCD_MBHC_MECH_DETECTION_TYPE, 1);
+ 
+ 	schedule_work(&mbhc->mbhc_plug_detect_work);
+ 
+@@ -875,6 +880,24 @@ static int wcd_mbhc_get_micbias(struct wcd_mbhc *mbhc)
+ 	return micbias;
+ }
+ 
++static int wcd_mbhc_read_adc(struct wcd_mbhc *mbhc)
++{
++	const struct wcd_mbhc_field *field = &mbhc->fields[WCD_MBHC_ADC_RESULT];
++	unsigned int val;
++	int ret;
++
++	if (!mbhc->cfg->typec_manual_audio)
++		return wcd_mbhc_read_field(mbhc, WCD_MBHC_ADC_RESULT);
++	if (!mbhc->component->regmap || !field->mask)
++		return -EINVAL;
++
++	ret = regmap_read(mbhc->component->regmap, field->reg, &val);
++	if (ret)
++		return ret;
++
++	return (val & field->mask) >> __ffs(field->mask);
++}
++
+ static int wcd_get_voltage_from_adc(u8 val, int micbias)
+ {
+ 	/* Formula for calculating voltage from ADC
+@@ -885,8 +908,7 @@ static int wcd_get_voltage_from_adc(u8 val, int micbias)
+ 
+ static int wcd_measure_adc_continuous(struct wcd_mbhc *mbhc)
+ {
+-	u8 adc_result;
+-	int output_mv;
++	int adc_result;
+ 	int retry = 3;
+ 	u8 adc_en;
+ 
+@@ -911,15 +933,17 @@ static int wcd_measure_adc_continuous(struct wcd_mbhc *mbhc)
+ 	while (retry--) {
+ 		/* wait for 3 msec before reading ADC result */
+ 		usleep_range(3000, 3100);
+-		adc_result = wcd_mbhc_read_field(mbhc, WCD_MBHC_ADC_RESULT);
++		adc_result = wcd_mbhc_read_adc(mbhc);
++		if (adc_result < 0)
++			break;
+ 	}
+ 
+ 	/* Restore ADC Enable */
+ 	wcd_mbhc_write_field(mbhc, WCD_MBHC_ADC_EN, adc_en);
+-	/* Get voltage from ADC result */
+-	output_mv = wcd_get_voltage_from_adc(adc_result, wcd_mbhc_get_micbias(mbhc));
++	if (adc_result < 0)
++		return adc_result;
+ 
+-	return output_mv;
++	return wcd_get_voltage_from_adc(adc_result, wcd_mbhc_get_micbias(mbhc));
+ }
+ 
+ static int wcd_measure_adc_once(struct wcd_mbhc *mbhc, int mux_ctl)
+@@ -936,7 +960,7 @@ static int wcd_measure_adc_once(struct wcd_mbhc *mbhc, int mux_ctl)
+ 	struct device *dev = mbhc->dev;
+ 	u8 adc_timeout = 0;
+ 	u8 adc_complete = 0;
+-	u8 adc_result;
++	int adc_result;
+ 	int retry = 6;
+ 	int ret;
+ 	int output_mv = 0;
+@@ -968,7 +992,11 @@ static int wcd_measure_adc_once(struct wcd_mbhc *mbhc, int mux_ctl)
+ 			continue;
+ 
+ 		/* Read ADC result */
+-		adc_result = wcd_mbhc_read_field(mbhc, WCD_MBHC_ADC_RESULT);
++		adc_result = wcd_mbhc_read_adc(mbhc);
++		if (adc_result < 0) {
++			output_mv = adc_result;
++			break;
++		}
+ 
+ 		/* Get voltage from ADC result */
+ 		output_mv = wcd_get_voltage_from_adc(adc_result,
+@@ -978,6 +1006,8 @@ static int wcd_measure_adc_once(struct wcd_mbhc *mbhc, int mux_ctl)
+ 
+ 	/* Restore ADC Enable */
+ 	wcd_mbhc_write_field(mbhc, WCD_MBHC_ADC_EN, adc_en);
++	if (output_mv < 0)
++		return output_mv;
+ 
+ 	if (retry <= 0) {
+ 		dev_err(dev, "%s: adc complete: %d, adc timeout: %d\n",
+@@ -995,7 +1025,7 @@ static int wcd_check_cross_conn(struct wcd_mbhc *mbhc)
+ {
+ 	u8 adc_mode, elect_ctl, adc_en, fsm_en;
+ 	int hphl_adc_res, hphr_adc_res;
+-	bool is_cross_conn = false;
++	int ret;
+ 
+ 	/* If PA is enabled, dont check for cross-connection */
+ 	if (wcd_mbhc_read_field(mbhc, WCD_MBHC_HPH_PA_EN))
+@@ -1013,19 +1043,21 @@ static int wcd_check_cross_conn(struct wcd_mbhc *mbhc)
+ 	fsm_en = wcd_mbhc_read_field(mbhc, WCD_MBHC_FSM_EN);
+ 
+ 	/* Get adc result for HPH L */
+-	hphl_adc_res = wcd_measure_adc_once(mbhc, MUX_CTL_HPH_L);
+-	if (hphl_adc_res < 0)
+-		return hphl_adc_res;
++	ret = wcd_measure_adc_once(mbhc, MUX_CTL_HPH_L);
++	if (ret < 0)
++		goto restore;
++	hphl_adc_res = ret;
+ 
+ 	/* Get adc result for HPH R in mV */
+-	hphr_adc_res = wcd_measure_adc_once(mbhc, MUX_CTL_HPH_R);
+-	if (hphr_adc_res < 0)
+-		return hphr_adc_res;
++	ret = wcd_measure_adc_once(mbhc, MUX_CTL_HPH_R);
++	if (ret < 0)
++		goto restore;
++	hphr_adc_res = ret;
+ 
+-	if (hphl_adc_res > HPHL_CROSS_CONN_THRESHOLD ||
+-	    hphr_adc_res > HPHL_CROSS_CONN_THRESHOLD)
+-		is_cross_conn = true;
++	ret = hphl_adc_res > HPHL_CROSS_CONN_THRESHOLD ||
++	      hphr_adc_res > HPHL_CROSS_CONN_THRESHOLD;
+ 
++restore:
+ 	wcd_mbhc_write_field(mbhc, WCD_MBHC_FSM_EN, 0);
+ 	/* Set the MUX selection to Auto */
+ 	wcd_mbhc_write_field(mbhc, WCD_MBHC_MUX_CTL, MUX_CTL_AUTO);
+@@ -1039,7 +1071,7 @@ static int wcd_check_cross_conn(struct wcd_mbhc *mbhc)
+ 	/* Restore electrical detection */
+ 	wcd_mbhc_write_field(mbhc, WCD_MBHC_ELECT_SCHMT_ISRC, elect_ctl);
+ 
+-	return is_cross_conn;
++	return ret;
+ }
+ 
+ static int wcd_mbhc_adc_get_hs_thres(struct wcd_mbhc *mbhc)
+@@ -1171,6 +1203,44 @@ static bool wcd_mbhc_check_for_spl_headset(struct wcd_mbhc *mbhc)
+ 	return is_spl_hs;
+ }
+ 
++static void wcd_mbhc_typec_check_orientation(struct wcd_mbhc *mbhc)
++{
++	enum wcd_mbhc_plug_type plug_type, swapped_type;
++	int output_mv, initial_mv;
++
++	if (!mbhc->cfg->typec_manual_audio || !mbhc->cfg->swap_gnd_mic)
++		return;
++
++	/* Audio accessories cannot reliably report their SBU wiring through CC. */
++	initial_mv = wcd_measure_adc_continuous(mbhc);
++	if (initial_mv < 0)
++		return;
++
++	plug_type = wcd_mbhc_get_plug_from_adc(mbhc, initial_mv);
++	/* A reversed microphone can still read within the headset range. */
++	if (plug_type == MBHC_PLUG_TYPE_HEADSET &&
++	    initial_mv >= WCD_MBHC_TYPEC_SWAP_CHECK_MV)
++		return;
++
++	if (!mbhc->cfg->swap_gnd_mic(mbhc->component))
++		return;
++
++	/* Allow the microphone bias to settle after switching SBU lines. */
++	usleep_range(10000, 10100);
++	output_mv = wcd_measure_adc_continuous(mbhc);
++	if (output_mv >= 0) {
++		swapped_type = wcd_mbhc_get_plug_from_adc(mbhc, output_mv);
++		if ((swapped_type == MBHC_PLUG_TYPE_HEADSET &&
++		     (plug_type != MBHC_PLUG_TYPE_HEADSET || output_mv > initial_mv)) ||
++		    (plug_type == MBHC_PLUG_TYPE_HIGH_HPH &&
++		     swapped_type == MBHC_PLUG_TYPE_HEADPHONE))
++			return;
++	}
++
++	mbhc->cfg->swap_gnd_mic(mbhc->component);
++	usleep_range(10000, 10100);
++}
++
+ static void wcd_correct_swch_plug(struct work_struct *work)
+ {
+ 	struct wcd_mbhc *mbhc;
+@@ -1200,6 +1270,8 @@ static void wcd_correct_swch_plug(struct work_struct *work)
+ 	/* Mask ADC COMPLETE interrupt */
+ 	disable_irq_nosync(mbhc->intr_ids->mbhc_hs_ins_intr);
+ 
++	wcd_mbhc_typec_check_orientation(mbhc);
++
+ 	/* Check for cross connection */
+ 	do {
+ 		cross_conn = wcd_check_cross_conn(mbhc);
+@@ -1215,6 +1287,8 @@ static void wcd_correct_swch_plug(struct work_struct *work)
+ 
+ 	/* Find plug type */
+ 	output_mv = wcd_measure_adc_continuous(mbhc);
++	if (output_mv < 0)
++		goto correct_plug_type;
+ 	plug_type = wcd_mbhc_get_plug_from_adc(mbhc, output_mv);
+ 
+ 	/*
+@@ -1243,28 +1317,39 @@ correct_plug_type:
+ 	timeout = jiffies + msecs_to_jiffies(HS_DETECT_PLUG_TIME_MS);
+ 
+ 	while (!time_after(jiffies, timeout)) {
++		enum wcd_mbhc_plug_type sampled_type;
++
+-		if (mbhc->hs_detect_work_stop) {
++		if (READ_ONCE(mbhc->hs_detect_work_stop)) {
+ 			wcd_micbias_disable(mbhc);
+ 			goto exit;
+ 		}
+ 
+ 		msleep(180);
+ 		/*
+-		 * Use ADC single mode to minimize the chance of missing out
+-		 * btn press/release for HEADSET type during correct work.
++		 * Use continuous conversions for manual Type-C correction to
++		 * avoid low readings. Keep single conversions on other routes.
+ 		 */
+-		output_mv = wcd_measure_adc_once(mbhc, MUX_CTL_IN2P);
++		if (mbhc->cfg->typec_manual_audio) {
++			output_mv = wcd_measure_adc_continuous(mbhc);
++			if (output_mv < 0)
++				continue;
++		} else {
++			output_mv = wcd_measure_adc_once(mbhc, MUX_CTL_IN2P);
++		}
+-		plug_type = wcd_mbhc_get_plug_from_adc(mbhc, output_mv);
++		sampled_type = wcd_mbhc_get_plug_from_adc(mbhc, output_mv);
+ 		is_pa_on = wcd_mbhc_read_field(mbhc, WCD_MBHC_HPH_PA_EN);
+ 
+ 		if (output_mv > hs_threshold && !is_spl_hs) {
+ 			is_spl_hs = wcd_mbhc_check_for_spl_headset(mbhc);
+ 			output_mv = wcd_measure_adc_once(mbhc, MUX_CTL_IN2P);
+ 
+ 			if (is_spl_hs) {
+ 				hs_threshold *= wcd_mbhc_get_micbias(mbhc);
+ 				hs_threshold /= micbias_mv;
+ 			}
++			if (mbhc->cfg->typec_manual_audio && output_mv < 0)
++				continue;
+ 		}
+ 
++		plug_type = sampled_type;
+ 		if ((output_mv <= hs_threshold) && !is_pa_on) {
+@@ -1308,7 +1393,8 @@ correct_plug_type:
+ 
+ 	wcd_mbhc_write_field(mbhc, WCD_MBHC_ADC_MODE, 0);
+ 	wcd_mbhc_write_field(mbhc, WCD_MBHC_ADC_EN, 0);
+-	wcd_mbhc_find_plug_and_report(mbhc, plug_type);
++	if (plug_type != MBHC_PLUG_TYPE_INVALID)
++		wcd_mbhc_find_plug_and_report(mbhc, plug_type);
+ 
+ 	/*
+ 	 * Set DETECTION_DONE bit for HEADSET
+@@ -1641,6 +1727,11 @@ EXPORT_SYMBOL(wcd_mbhc_init);
+ 
+ void wcd_mbhc_deinit(struct wcd_mbhc *mbhc)
+ {
++	/* Detection work can enable IRQs and queue more work. */
++	disable_work_sync(&mbhc->mbhc_plug_detect_work);
++	WRITE_ONCE(mbhc->hs_detect_work_stop, true);
++	disable_work_sync(&mbhc->correct_plug_swch);
++
+ 	free_irq(mbhc->intr_ids->hph_right_ocp, mbhc);
+ 	free_irq(mbhc->intr_ids->hph_left_ocp, mbhc);
+ 	free_irq(mbhc->intr_ids->mbhc_hs_rem_intr, mbhc);
+@@ -1648,11 +1739,7 @@ void wcd_mbhc_deinit(struct wcd_mbhc *mbhc)
+ 	free_irq(mbhc->intr_ids->mbhc_btn_release_intr, mbhc);
+ 	free_irq(mbhc->intr_ids->mbhc_btn_press_intr, mbhc);
+ 	free_irq(mbhc->intr_ids->mbhc_sw_intr, mbhc);
+-
+-	mutex_lock(&mbhc->lock);
+-	wcd_cancel_hs_detect_plug(mbhc,	&mbhc->correct_plug_swch);
+-	cancel_work_sync(&mbhc->mbhc_plug_detect_work);
+-	mutex_unlock(&mbhc->lock);
++	cancel_delayed_work_sync(&mbhc->mbhc_btn_dwork);
+ 
+ 	kfree(mbhc);
+ }

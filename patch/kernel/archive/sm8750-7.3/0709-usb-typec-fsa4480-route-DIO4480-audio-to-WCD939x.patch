@@ -1,0 +1,987 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: retro98boy <retro98boy@qq.com>
+Date: Mon, 23 Nov 2026 17:47:13 +0800
+Subject: [PATCH] usb: typec: fsa4480: route DIO4480 audio to WCD939x
+
+DIO4480 needs explicit microphone and ground routing. Use the DIO4480
+compatible and the codec graph connection to select this path.
+Let WCD939x select one route when switches share the same headset lines.
+
+Replay the selected route if an accessory connects before jack setup.
+Use the codec orientation switch for USBSS only.
+Send audio callbacks to the codec endpoint. Use device links to unbind
+UCSI and DP Alt Mode before the switches. Retry a failed disconnect
+before releasing the route.
+
+Based on the FSA4480 codec notification work by Luca Weiss and Val Packett.
+
+Link: https://lore.kernel.org/all/20261020162101.1527014-3-val@packett.cool/
+Signed-off-by: retro98boy <retro98boy@qq.com>
+---
+diff --git a/drivers/soc/qcom/pmic_glink_altmode.c b/drivers/soc/qcom/pmic_glink_altmode.c
+index b94c79e4a9a058521cb626f6f23de24ec5cde211..ebbf80e8174d8a0259bf941b1ed27ad429aff0fd 100644
+--- a/drivers/soc/qcom/pmic_glink_altmode.c
++++ b/drivers/soc/qcom/pmic_glink_altmode.c
+@@ -631,6 +631,13 @@ static int pmic_glink_altmode_probe(struct auxiliary_device *adev,
+ 		alt_port->tbt_alt.mode = TYPEC_TBT_MODE;
+ 		alt_port->tbt_alt.active = 1;
+ 
++		ret = fwnode_typec_mux_link_suppliers(dev, fwnode, "dioo,dio4480");
++		if (ret) {
++			fwnode_handle_put(fwnode);
++			return dev_err_probe(dev, ret, "failed to link mux for port %u\n",
++					     port);
++		}
++
+ 		alt_port->typec_mux = fwnode_typec_mux_get(fwnode);
+ 		if (IS_ERR(alt_port->typec_mux)) {
+ 			fwnode_handle_put(fwnode);
+@@ -712,11 +719,24 @@ static int pmic_glink_altmode_probe(struct auxiliary_device *adev,
+ 	if (IS_ERR(altmode->client))
+ 		return PTR_ERR(altmode->client);
+ 
++	dev_set_drvdata(dev, altmode);
+ 	pmic_glink_client_register(altmode->client);
+ 
+ 	return 0;
+ }
+ 
++static void pmic_glink_altmode_remove(struct auxiliary_device *adev)
++{
++	struct pmic_glink_altmode *altmode = dev_get_drvdata(&adev->dev);
++	unsigned int i;
++
++	/* GLINK callbacks can queue work until devres releases the client. */
++	disable_work_sync(&altmode->enable_work);
++	for (i = 0; i < ARRAY_SIZE(altmode->ports); i++)
++		if (altmode->ports[i].altmode)
++			disable_work_sync(&altmode->ports[i].work);
++}
++
+ static const struct auxiliary_device_id pmic_glink_altmode_id_table[] = {
+ 	{ .name = "pmic_glink.altmode", },
+ 	{},
+@@ -726,6 +746,7 @@ MODULE_DEVICE_TABLE(auxiliary, pmic_glink_altmode_id_table);
+ static struct auxiliary_driver pmic_glink_altmode_driver = {
+ 	.name = "pmic_glink_altmode",
+ 	.probe = pmic_glink_altmode_probe,
++	.remove = pmic_glink_altmode_remove,
+ 	.id_table = pmic_glink_altmode_id_table,
+ };
+ 
+diff --git a/drivers/usb/typec/mux.c b/drivers/usb/typec/mux.c
+index 37f87d3d6b926d76bc136968aed7a8c1ecd5d9a1..4734a97bc4edc6f0d5b03f32c08953b429302b58 100644
+--- a/drivers/usb/typec/mux.c
++++ b/drivers/usb/typec/mux.c
+@@ -109,7 +109,7 @@ struct typec_switch *fwnode_typec_switch_get(struct fwnode_handle *fwnode)
+ 	}
+ 
+ 	for (i = 0; i < count; i++) {
+-		WARN_ON(!try_module_get(sw_devs[i]->dev.parent->driver->owner));
++		WARN_ON(!try_module_get(sw_devs[i]->owner));
+ 		sw->sw_devs[i] = sw_devs[i];
+ 	}
+ 
+@@ -146,7 +146,7 @@ void typec_switch_put(struct typec_switch *sw)
+ 	for (i = 0; i < sw->num_sw_devs; i++) {
+ 		sw_dev = sw->sw_devs[i];
+ 
+-		module_put(sw_dev->dev.parent->driver->owner);
++		module_put(sw_dev->owner);
+ 		put_device(&sw_dev->dev);
+ 	}
+ 	kfree(sw);
+@@ -188,6 +188,8 @@ typec_switch_register(struct device *parent,
+ 		return ERR_PTR(-ENOMEM);
+ 
+ 	sw_dev->set = desc->set;
++	if (parent && parent->driver)
++		sw_dev->owner = parent->driver->owner;
+ 
+ 	device_initialize(&sw_dev->dev);
+ 	sw_dev->dev.parent = parent;
+@@ -347,7 +349,7 @@ struct typec_mux *fwnode_typec_mux_get(struct fwnode_handle *fwnode)
+ 	}
+ 
+ 	for (i = 0; i < count; i++) {
+-		WARN_ON(!try_module_get(mux_devs[i]->dev.parent->driver->owner));
++		WARN_ON(!try_module_get(mux_devs[i]->owner));
+ 		mux->mux_devs[i] = mux_devs[i];
+ 	}
+ 
+@@ -367,6 +369,116 @@ put_mux_devs:
+ }
+ EXPORT_SYMBOL_GPL(fwnode_typec_mux_get);
+ 
++static struct device *typec_mux_link_provider(struct device *consumer,
++					      const struct fwnode_handle *fwnode,
++					      bool audio)
++{
++	struct device *dev, *provider;
++	int ret = -EPROBE_DEFER;
++
++	dev = class_find_device(&typec_mux_class, NULL, fwnode, mux_fwnode_match);
++	if (!dev)
++		return ERR_PTR(ret);
++
++	provider = dev->parent;
++	/* Supplier unbind can wait for the consumer's probe lock. */
++	if (!device_trylock(provider))
++		goto put_dev;
++	if (!device_is_bound(provider) || !device_is_registered(dev))
++		goto unlock;
++	if (audio && !to_typec_mux_dev(dev)->set_audio) {
++		ret = -EOPNOTSUPP;
++		goto unlock;
++	}
++	if (audio && !try_module_get(to_typec_mux_dev(dev)->owner))
++		goto unlock;
++
++	if (!device_link_add(consumer, provider, DL_FLAG_AUTOPROBE_CONSUMER)) {
++		if (audio)
++			module_put(to_typec_mux_dev(dev)->owner);
++		ret = -EINVAL;
++		goto unlock;
++	}
++	device_unlock(provider);
++
++	return dev;
++
++unlock:
++	device_unlock(provider);
++put_dev:
++	put_device(dev);
++	return ERR_PTR(ret);
++}
++
++/**
++ * fwnode_typec_mux_link_suppliers - Link a probing device to connector muxes
++ * @consumer: Device that uses the muxes
++ * @connector: Firmware node of the USB Type-C connector
++ * @compatible: Compatible string of mux suppliers to link
++ *
++ * Keep the links across driver unbind so the suppliers can reprobe the consumer.
++ *
++ * Return: 0 on success or a negative error code.
++ */
++int fwnode_typec_mux_link_suppliers(struct device *consumer,
++				    const struct fwnode_handle *connector,
++				    const char *compatible)
++{
++	struct fwnode_handle *ep;
++
++	fwnode_graph_for_each_endpoint(connector, ep) {
++		struct fwnode_handle *mux __free(fwnode_handle) =
++			fwnode_graph_get_remote_port_parent(ep);
++		struct device *dev;
++
++		if (!fwnode_device_is_available(mux) ||
++		    !fwnode_device_is_compatible(mux, compatible) ||
++		    !fwnode_property_present(mux, "mode-switch"))
++			continue;
++
++		dev = typec_mux_link_provider(consumer, mux, false);
++		if (IS_ERR(dev)) {
++			fwnode_handle_put(ep);
++			return PTR_ERR(dev);
++		}
++		put_device(dev);
++	}
++	return 0;
++}
++EXPORT_SYMBOL_GPL(fwnode_typec_mux_link_suppliers);
++
++/**
++ * fwnode_typec_mux_get_direct - Find a mux on a specific firmware node
++ * @consumer: Device that uses the mux
++ * @fwnode: Firmware node of the mux provider
++ *
++ * Link the consumer to the provider so the consumer unbinds first.
++ * Release the returned handle with typec_mux_put().
++ *
++ * Return: the mux handle or an error pointer.
++ */
++struct typec_mux *fwnode_typec_mux_get_direct(struct device *consumer,
++					      const struct fwnode_handle *fwnode)
++{
++	struct typec_mux *mux;
++	struct device *dev;
++
++	mux = kzalloc_obj(*mux);
++	if (!mux)
++		return ERR_PTR(-ENOMEM);
++
++	dev = typec_mux_link_provider(consumer, fwnode, true);
++	if (IS_ERR(dev)) {
++		kfree(mux);
++		return ERR_CAST(dev);
++	}
++
++	mux->mux_devs[0] = to_typec_mux_dev(dev);
++	mux->num_mux_devs = 1;
++	return mux;
++}
++EXPORT_SYMBOL_GPL(fwnode_typec_mux_get_direct);
++
+ /**
+  * typec_mux_put - Release handle to a Multiplexer
+  * @mux: USB Type-C Connector Multiplexer/DeMultiplexer
+@@ -383,7 +495,7 @@ void typec_mux_put(struct typec_mux *mux)
+ 
+ 	for (i = 0; i < mux->num_mux_devs; i++) {
+ 		mux_dev = mux->mux_devs[i];
+-		module_put(mux_dev->dev.parent->driver->owner);
++		module_put(mux_dev->owner);
+ 		put_device(&mux_dev->dev);
+ 	}
+ 	kfree(mux);
+@@ -402,6 +514,8 @@ int typec_mux_set(struct typec_mux *mux, struct typec_mux_state *state)
+ 	for (i = 0; i < mux->num_mux_devs; i++) {
+ 		mux_dev = mux->mux_devs[i];
+ 
++		if (!mux_dev->set)
++			continue;
+ 		ret = mux_dev->set(mux_dev, state);
+ 		if (ret && ret != -EOPNOTSUPP)
+ 			return ret;
+@@ -411,8 +525,24 @@ int typec_mux_set(struct typec_mux *mux, struct typec_mux_state *state)
+ }
+ EXPORT_SYMBOL_GPL(typec_mux_set);
+ 
++int typec_mux_set_audio(struct typec_mux *mux, struct typec_audio_route *route,
++			bool connected)
++{
++	struct typec_mux_dev *mux_dev;
++
++	if (!mux || mux->num_mux_devs != 1)
++		return -EINVAL;
++	mux_dev = mux->mux_devs[0];
++	if (!mux_dev->set_audio)
++		return -EOPNOTSUPP;
++
++	return mux_dev->set_audio(mux_dev, route, connected);
++}
++EXPORT_SYMBOL_GPL(typec_mux_set_audio);
++
+ static void typec_mux_release(struct device *dev)
+ {
++	put_device(dev->parent);
+ 	kfree(to_typec_mux_dev(dev));
+ }
+ 
+@@ -437,7 +567,7 @@ typec_mux_register(struct device *parent, const struct typec_mux_desc *desc)
+ 	struct typec_mux_dev *mux_dev;
+ 	int ret;
+ 
+-	if (!desc || !desc->set)
++	if (!desc || (!desc->set && !desc->set_audio))
+ 		return ERR_PTR(-EINVAL);
+ 
+ 	mux_dev = kzalloc_obj(*mux_dev);
+@@ -445,9 +575,12 @@ typec_mux_register(struct device *parent, const struct typec_mux_desc *desc)
+ 		return ERR_PTR(-ENOMEM);
+ 
+ 	mux_dev->set = desc->set;
++	if (parent && parent->driver)
++		mux_dev->owner = parent->driver->owner;
++	mux_dev->set_audio = desc->set_audio;
+ 
+ 	device_initialize(&mux_dev->dev);
+-	mux_dev->dev.parent = parent;
++	mux_dev->dev.parent = get_device(parent);
+ 	mux_dev->dev.fwnode = desc->fwnode;
+ 	mux_dev->dev.class = &typec_mux_class;
+ 	mux_dev->dev.type = &typec_mux_dev_type;
+diff --git a/drivers/usb/typec/mux.h b/drivers/usb/typec/mux.h
+index 58f0f28b6dc84d35df8e6cc9f01e752799f1e44a..d6120f5c23bbc698eb07c2b9665d377f4cb218a7 100644
+--- a/drivers/usb/typec/mux.h
++++ b/drivers/usb/typec/mux.h
+@@ -7,12 +7,15 @@
+ 
+ struct typec_switch_dev {
+ 	struct device dev;
++	struct module *owner;
+ 	typec_switch_set_fn_t set;
+ };
+ 
+ struct typec_mux_dev {
+ 	struct device dev;
++	struct module *owner;
+ 	typec_mux_set_fn_t set;
++	typec_mux_set_audio_fn_t set_audio;
+ };
+ 
+ #define to_typec_switch_dev(_dev_) container_of(_dev_, struct typec_switch_dev, dev)
+diff --git a/drivers/usb/typec/mux/fsa4480.c b/drivers/usb/typec/mux/fsa4480.c
+index bea0c1deec94d5a69d2eb9020db95939cdf33e15..8cae6670b240da1770dc14349b004f9476f0055b 100644
+--- a/drivers/usb/typec/mux/fsa4480.c
++++ b/drivers/usb/typec/mux/fsa4480.c
+@@ -9,6 +9,7 @@
+ #include <linux/kernel.h>
+ #include <linux/module.h>
+ #include <linux/mutex.h>
++#include <linux/property.h>
+ #include <linux/regmap.h>
+ #include <linux/usb/typec_dp.h>
+ #include <linux/usb/typec_mux.h>
+@@ -60,12 +61,18 @@ struct fsa4480 {
+ 
+ 	struct regmap *regmap;
+ 
++	struct typec_mux *codec;
++	struct typec_audio_route audio_route;
++	/* Serialize mux programming and codec notification. */
++	struct mutex mode_lock;
++
+ 	enum typec_orientation orientation;
+ 	unsigned long mode;
+ 	unsigned int svid;
+ 
+ 	u8 cur_enable;
+ 	bool swap_sbu_lanes;
++	bool audio_reversed;
+ };
+ 
+ static const struct regmap_config fsa4480_regmap_config = {
+@@ -76,6 +83,47 @@ static const struct regmap_config fsa4480_regmap_config = {
+ 	.disable_locking = true,
+ };
+ 
++static int fsa4480_program_switch(struct fsa4480 *fsa, u8 enable, u8 sel)
++{
++	unsigned int old_sel;
++	int ret, restore;
++
++	ret = regmap_read(fsa->regmap, FSA4480_SWITCH_SELECT, &old_sel);
++	if (ret)
++		return ret;
++
++	if (fsa->cur_enable & FSA4480_ENABLE_SBU) {
++		ret = regmap_write(fsa->regmap, FSA4480_SWITCH_ENABLE,
++				   fsa->cur_enable & ~FSA4480_ENABLE_SBU);
++		if (ret)
++			goto restore_enable;
++		usleep_range(35, 1000);
++	}
++
++	ret = regmap_write(fsa->regmap, FSA4480_SWITCH_SELECT, sel);
++	if (!ret)
++		ret = regmap_write(fsa->regmap, FSA4480_SWITCH_ENABLE, enable);
++	if (ret) {
++		restore = regmap_write(fsa->regmap, FSA4480_SWITCH_SELECT, old_sel);
++		if (restore)
++			dev_err_ratelimited(&fsa->client->dev, "failed to restore switch selection: %d\n",
++					    restore);
++		goto restore_enable;
++	}
++
++	if (enable & FSA4480_ENABLE_SBU)
++		usleep_range(15, 1000);
++	fsa->cur_enable = enable;
++	return 0;
++
++restore_enable:
++	restore = regmap_write(fsa->regmap, FSA4480_SWITCH_ENABLE, fsa->cur_enable);
++	if (restore)
++		dev_err_ratelimited(&fsa->client->dev, "failed to restore switch enable: %d\n",
++				    restore);
++	return ret;
++}
++
+ static int fsa4480_set(struct fsa4480 *fsa)
+ {
+ 	bool reverse = (fsa->orientation == TYPEC_ORIENTATION_REVERSE);
+@@ -114,11 +162,19 @@ static int fsa4480_set(struct fsa4480 *fsa)
+ 			return -EOPNOTSUPP;
+ 		}
+ 	} else if (fsa->mode == TYPEC_MODE_AUDIO) {
+-		/* Audio Accessory Mode, setup to auto Jack Detection */
+ 		enable |= FSA4480_ENABLE_USB | FSA4480_ENABLE_AGND;
++		/* DIO4480 needs explicit MIC, ground and sense routing. */
++		if (fsa->codec) {
++			enable |= FSA4480_ENABLE_SENSE | FSA4480_ENABLE_MIC;
++			if (fsa->audio_reversed)
++				sel = FSA4480_SEL_SENSE | FSA4480_SEL_MIC | FSA4480_SEL_AGND;
++		}
+ 	} else
+ 		return -EOPNOTSUPP;
+ 
++	if (fsa->codec)
++		return fsa4480_program_switch(fsa, enable, sel);
++
+ 	if (fsa->cur_enable & FSA4480_ENABLE_SBU) {
+ 		/* Disable SBU output while re-configuring the switch */
+ 		regmap_write(fsa->regmap, FSA4480_SWITCH_ENABLE,
+@@ -146,18 +202,67 @@ static int fsa4480_set(struct fsa4480 *fsa)
+ 	return 0;
+ }
+ 
++static int fsa4480_audio_connect(struct typec_audio_route *route)
++{
++	struct fsa4480 *fsa = container_of(route, struct fsa4480, audio_route);
++	unsigned long old_mode;
++	unsigned int old_svid;
++	bool old_reversed;
++	int ret;
++
++	mutex_lock(&fsa->lock);
++	old_mode = fsa->mode;
++	old_svid = fsa->svid;
++	old_reversed = fsa->audio_reversed;
++	fsa->audio_reversed = (fsa->orientation == TYPEC_ORIENTATION_REVERSE) ^
++			      fsa->swap_sbu_lanes;
++	fsa->mode = TYPEC_MODE_AUDIO;
++	fsa->svid = 0;
++	ret = fsa4480_set(fsa);
++	if (ret) {
++		fsa->mode = old_mode;
++		fsa->svid = old_svid;
++		fsa->audio_reversed = old_reversed;
++	}
++	mutex_unlock(&fsa->lock);
++
++	return ret;
++}
++
++static bool fsa4480_audio_swap(struct typec_audio_route *route)
++{
++	struct fsa4480 *fsa = container_of(route, struct fsa4480, audio_route);
++	int ret = -ENODEV;
++
++	mutex_lock(&fsa->lock);
++	if (!fsa->svid && fsa->mode == TYPEC_MODE_AUDIO) {
++		fsa->audio_reversed = !fsa->audio_reversed;
++		ret = fsa4480_set(fsa);
++		if (ret)
++			fsa->audio_reversed = !fsa->audio_reversed;
++	}
++	mutex_unlock(&fsa->lock);
++
++	return !ret;
++}
++
+ static int fsa4480_switch_set(struct typec_switch_dev *sw,
+ 			      enum typec_orientation orientation)
+ {
+ 	struct fsa4480 *fsa = typec_switch_get_drvdata(sw);
++	enum typec_orientation old_orientation;
+ 	int ret = 0;
+ 
+ 	mutex_lock(&fsa->lock);
+ 
+ 	if (fsa->orientation != orientation) {
++		old_orientation = fsa->orientation;
+ 		fsa->orientation = orientation;
+ 
+-		ret = fsa4480_set(fsa);
++		if (!fsa->codec || fsa->svid || fsa->mode != TYPEC_MODE_AUDIO)
++			ret = fsa4480_set(fsa);
++		if (ret && fsa->codec)
++			fsa->orientation = old_orientation;
+ 	}
+ 
+ 	mutex_unlock(&fsa->lock);
+@@ -165,27 +270,68 @@ static int fsa4480_switch_set(struct typec_switch_dev *sw,
+ 	return ret;
+ }
+ 
+-static int fsa4480_mux_set(struct typec_mux_dev *mux, struct typec_mux_state *state)
++static int fsa4480_leave_audio(struct fsa4480 *fsa)
+ {
+-	struct fsa4480 *fsa = typec_mux_get_drvdata(mux);
++	int attempt, ret;
++
++	/* Keep the route reserved until the switch disconnects the audio lines. */
++	for (attempt = 0; attempt < 3; attempt++) {
++		if (attempt)
++			usleep_range(1000, 2000);
++		ret = fsa4480_set(fsa);
++		if (!ret || ret == -EOPNOTSUPP)
++			return ret;
++	}
++	dev_err_ratelimited(&fsa->client->dev, "failed to disconnect audio route: %d\n", ret);
++	return ret;
++}
++
++static int fsa4480_set_mode(struct fsa4480 *fsa, struct typec_mux_state *state)
++{
++	unsigned long old_mode;
++	unsigned int old_svid;
++	bool leaving_audio;
+ 	int ret = 0;
+ 
++	if (fsa->codec && !state->alt && state->mode == TYPEC_MODE_AUDIO)
++		return typec_mux_set_audio(fsa->codec, &fsa->audio_route, true);
++
+ 	mutex_lock(&fsa->lock);
+ 
+-	if (fsa->mode != state->mode) {
++	leaving_audio = fsa->codec && !fsa->svid && fsa->mode == TYPEC_MODE_AUDIO;
++	/* Audio and DisplayPort can use the same numeric mode. */
++	if (fsa->mode != state->mode || leaving_audio) {
++		old_mode = fsa->mode;
++		old_svid = fsa->svid;
+ 		fsa->mode = state->mode;
+-
+-		if (state->alt)
+-			fsa->svid = state->alt->svid;
++		fsa->svid = state->alt ? state->alt->svid : 0;
++		if (leaving_audio)
++			ret = fsa4480_leave_audio(fsa);
+ 		else
+-			fsa->svid = 0; // No SVID
+-
+-		ret = fsa4480_set(fsa);
++			ret = fsa4480_set(fsa);
++		if (ret && fsa->codec) {
++			fsa->mode = old_mode;
++			fsa->svid = old_svid;
++		}
+ 	}
+ 
+ 	mutex_unlock(&fsa->lock);
+ 
+-	return ret;
++	if (ret || !leaving_audio)
++		return ret;
++
++	return typec_mux_set_audio(fsa->codec, &fsa->audio_route, false);
++}
++
++static int fsa4480_mux_set(struct typec_mux_dev *mux, struct typec_mux_state *state)
++{
++	struct fsa4480 *fsa = typec_mux_get_drvdata(mux);
++
++	if (!fsa->codec)
++		return fsa4480_set_mode(fsa, state);
++
++	guard(mutex)(&fsa->mode_lock);
++	return fsa4480_set_mode(fsa, state);
+ }
+ 
+ enum {
+@@ -250,6 +396,22 @@ out_error:
+ 	return ret;
+ }
+ 
++static struct typec_mux *fsa4480_get_codec(struct device *dev)
++{
++	struct fwnode_handle *ep, *codec;
++	struct typec_mux *mux = NULL;
++
++	ep = fwnode_graph_get_endpoint_by_id(dev_fwnode(dev), 0, 1, 0);
++	if (!ep)
++		return NULL;
++	codec = fwnode_graph_get_remote_port_parent(ep);
++	fwnode_handle_put(ep);
++	if (fwnode_property_present(codec, "mode-switch"))
++		mux = fwnode_typec_mux_get_direct(dev, codec);
++	fwnode_handle_put(codec);
++	return mux;
++}
++
+ static int fsa4480_probe(struct i2c_client *client)
+ {
+ 	struct device *dev = &client->dev;
+@@ -287,6 +449,18 @@ static int fsa4480_probe(struct i2c_client *client)
+ 		FIELD_GET(FSA4480_DEVICE_ID_REV_ID, val),
+ 		FIELD_GET(FSA4480_DEVICE_ID_VENDOR_ID, val));
+ 
++	if (device_is_compatible(dev, "dioo,dio4480")) {
++		/* DIO4480 needs the codec to select and check the audio route. */
++		fsa->codec = fsa4480_get_codec(dev);
++		if (IS_ERR(fsa->codec))
++			return dev_err_probe(dev, PTR_ERR(fsa->codec),
++					     "failed to acquire codec mode-switch\n");
++
++		mutex_init(&fsa->mode_lock);
++		fsa->audio_route.connect = fsa4480_audio_connect;
++		fsa->audio_route.swap_mic_gnd = fsa4480_audio_swap;
++	}
++
+ 	/* Safe mode */
+ 	fsa->cur_enable = FSA4480_ENABLE_DEVICE | FSA4480_ENABLE_USB;
+ 	fsa->mode = TYPEC_STATE_SAFE;
+@@ -310,8 +484,11 @@ static int fsa4480_probe(struct i2c_client *client)
+ 	sw_desc.set = fsa4480_switch_set;
+ 
+ 	fsa->sw = typec_switch_register(dev, &sw_desc);
+-	if (IS_ERR(fsa->sw))
+-		return dev_err_probe(dev, PTR_ERR(fsa->sw), "failed to register typec switch\n");
++	if (IS_ERR(fsa->sw)) {
++		ret = dev_err_probe(dev, PTR_ERR(fsa->sw),
++				    "failed to register typec switch\n");
++		goto err_put_mux;
++	}
+ 
+ 	mux_desc.drvdata = fsa;
+ 	mux_desc.fwnode = dev_fwnode(dev);
+@@ -319,12 +496,21 @@ static int fsa4480_probe(struct i2c_client *client)
+ 
+ 	fsa->mux = typec_mux_register(dev, &mux_desc);
+ 	if (IS_ERR(fsa->mux)) {
+-		typec_switch_unregister(fsa->sw);
+-		return dev_err_probe(dev, PTR_ERR(fsa->mux), "failed to register typec mux\n");
++		ret = dev_err_probe(dev, PTR_ERR(fsa->mux),
++				    "failed to register typec mux\n");
++		goto err_unregister_switch;
+ 	}
+ 
+ 	i2c_set_clientdata(client, fsa);
+ 	return 0;
++
++err_unregister_switch:
++	typec_switch_unregister(fsa->sw);
++
++err_put_mux:
++	typec_mux_put(fsa->codec);
++
++	return ret;
+ }
+ 
+ static void fsa4480_remove(struct i2c_client *client)
+@@ -333,6 +519,19 @@ static void fsa4480_remove(struct i2c_client *client)
+ 
+ 	typec_mux_unregister(fsa->mux);
+ 	typec_switch_unregister(fsa->sw);
++
++	if (fsa->codec) {
++		scoped_guard(mutex, &fsa->lock) {
++			if (fsa->mode == TYPEC_MODE_AUDIO && !fsa->svid) {
++				fsa->mode = TYPEC_STATE_SAFE;
++				fsa4480_leave_audio(fsa);
++			}
++		}
++
++		/* Drop the codec's route reference before freeing the switch. */
++		typec_mux_set_audio(fsa->codec, &fsa->audio_route, false);
++		typec_mux_put(fsa->codec);
++	}
+ }
+ 
+ static const struct i2c_device_id fsa4480_table[] = {
+@@ -342,6 +541,7 @@ static const struct i2c_device_id fsa4480_table[] = {
+ MODULE_DEVICE_TABLE(i2c, fsa4480_table);
+ 
+ static const struct of_device_id fsa4480_of_table[] = {
++	{ .compatible = "dioo,dio4480" },
+ 	{ .compatible = "fcs,fsa4480" },
+ 	{ }
+ };
+diff --git a/drivers/usb/typec/ucsi/ucsi_glink.c b/drivers/usb/typec/ucsi/ucsi_glink.c
+index 8428d0f92ccf2c98d263988549342eb03c2d15e1..f353cc390b2db5f92a83a4245761fcd8ce58aaba 100644
+--- a/drivers/usb/typec/ucsi/ucsi_glink.c
++++ b/drivers/usb/typec/ucsi/ucsi_glink.c
+@@ -456,6 +456,11 @@ static int pmic_glink_ucsi_probe(struct auxiliary_device *adev,
+ 			continue;
+ 		}
+ 
++		/* Unbind UCSI before DIO4480 releases its switch and mux. */
++		ret = fwnode_typec_mux_link_suppliers(dev, fwnode, "dioo,dio4480");
++		if (ret)
++			return dev_err_probe(dev, ret, "failed to link connector mux\n");
++
+ 		desc = devm_gpiod_get_index_optional(&adev->dev, "orientation", port, GPIOD_IN);
+ 
+ 		/* If GPIO isn't found, continue */
+diff --git a/include/linux/usb/typec_mux.h b/include/linux/usb/typec_mux.h
+index aa9ebb7e2fe0bb75967b06566cb5561c4727bcfb..c9bc1f5de76c5cfb7f12ec019d98576e34336c9f 100644
+--- a/include/linux/usb/typec_mux.h
++++ b/include/linux/usb/typec_mux.h
+@@ -78,6 +78,16 @@ static inline struct typec_switch *typec_switch_get(struct device *dev)
+ 	return fwnode_typec_switch_get(dev_fwnode(dev));
+ }
+ 
++/*
++ * Pass this route to typec_mux_set_audio() for the codec to select.
++ * The codec calls connect() after selecting the switch.
++ * Keep the route valid until the codec receives a disconnect for it.
++ */
++struct typec_audio_route {
++	int (*connect)(struct typec_audio_route *route);
++	bool (*swap_mic_gnd)(struct typec_audio_route *route);
++};
++
+ struct typec_mux_state {
+ 	struct typec_altmode *alt;
+ 	unsigned long mode;
+@@ -86,10 +96,13 @@ struct typec_mux_state {
+ 
+ typedef int (*typec_mux_set_fn_t)(struct typec_mux_dev *mux,
+ 				  struct typec_mux_state *state);
++typedef int (*typec_mux_set_audio_fn_t)(struct typec_mux_dev *mux,
++				       struct typec_audio_route *route, bool connected);
+ 
+ struct typec_mux_desc {
+ 	struct fwnode_handle *fwnode;
+ 	typec_mux_set_fn_t set;
++	typec_mux_set_audio_fn_t set_audio;
+ 	const char *name;
+ 	void *drvdata;
+ };
+@@ -97,8 +110,15 @@ struct typec_mux_desc {
+ #if IS_ENABLED(CONFIG_TYPEC)
+ 
+ struct typec_mux *fwnode_typec_mux_get(struct fwnode_handle *fwnode);
++int fwnode_typec_mux_link_suppliers(struct device *consumer,
++				    const struct fwnode_handle *connector,
++				    const char *compatible);
++struct typec_mux *fwnode_typec_mux_get_direct(struct device *consumer,
++					      const struct fwnode_handle *fwnode);
+ void typec_mux_put(struct typec_mux *mux);
+ int typec_mux_set(struct typec_mux *mux, struct typec_mux_state *state);
++int typec_mux_set_audio(struct typec_mux *mux, struct typec_audio_route *route,
++			bool connected);
+ 
+ struct typec_mux_dev *
+ typec_mux_register(struct device *parent, const struct typec_mux_desc *desc);
+diff --git a/sound/soc/codecs/wcd-mbhc-v2.h b/sound/soc/codecs/wcd-mbhc-v2.h
+index f85b3d01081a0ae3438032d6c6040a35eea27198..296c9381162596e62fbe95a3272b0f18cc18b52d 100644
+--- a/sound/soc/codecs/wcd-mbhc-v2.h
++++ b/sound/soc/codecs/wcd-mbhc-v2.h
+@@ -194,6 +194,7 @@ struct wcd_mbhc_config {
+ 	int num_btn;
+ 	bool mono_stero_detection;
+ 	bool typec_analog_mux;
++	bool typec_manual_audio;
+ 	bool (*swap_gnd_mic)(struct snd_soc_component *component);
+ 	bool hs_ext_micbias;
+ 	bool gnd_det_en;
+diff --git a/sound/soc/codecs/wcd939x.c b/sound/soc/codecs/wcd939x.c
+index 135e02e594e59222ca128ae2bb697be298182631..c28afaf1027b84dd750d8090ce2384087489ede4 100644
+--- a/sound/soc/codecs/wcd939x.c
++++ b/sound/soc/codecs/wcd939x.c
+@@ -182,6 +182,9 @@ struct wcd939x_priv {
+ 	struct snd_soc_component *component;
+ 	/* micb setup lock */
+ 	struct mutex micb_lock;
++	/* Serialize manual Type-C routing with jack registration. */
++	struct mutex audio_lock;
++	struct typec_audio_route *audio_route;
+ 	/* typec handling */
+ 	bool typec_analog_mux;
+ #if IS_ENABLED(CONFIG_TYPEC)
+@@ -3370,8 +3373,20 @@ err_free_clsh_ctrl:
+ static void wcd939x_soc_codec_remove(struct snd_soc_component *component)
+ {
+ 	struct wcd939x_priv *wcd939x = snd_soc_component_get_drvdata(component);
++	bool had_jack = false;
++
++	if (wcd939x->mbhc_cfg.typec_manual_audio) {
++		mutex_lock(&wcd939x->audio_lock);
++		had_jack = !!wcd939x->jack;
++		wcd939x->jack = NULL;
++		mutex_unlock(&wcd939x->audio_lock);
++	}
+ 
+ 	wcd939x_mbhc_deinit(component);
++	if (had_jack) {
++		pm_runtime_allow(wcd939x->txdev);
++		pm_runtime_allow(wcd939x->rxdev);
++	}
+ 
+ 	free_irq(wcd939x->ear_pdm_wd_int, wcd939x);
+ 	free_irq(wcd939x->hphl_pdm_wd_int, wcd939x);
+@@ -3380,11 +3395,8 @@ static void wcd939x_soc_codec_remove(struct snd_soc_component *component)
+ 	wcd_clsh_ctrl_free(wcd939x->clsh_info);
+ }
+ 
+-static int wcd939x_codec_set_jack(struct snd_soc_component *comp,
+-				  struct snd_soc_jack *jack, void *data)
++static int wcd939x_set_jack(struct wcd939x_priv *wcd, struct snd_soc_jack *jack)
+ {
+-	struct wcd939x_priv *wcd = dev_get_drvdata(comp->dev);
+-
+ 	if (jack) {
+ 		/*
+ 		 * MBHC can only report while the SoundWire devices stay
+@@ -3407,6 +3419,28 @@ static int wcd939x_codec_set_jack(struct snd_soc_component *comp,
+ 	return 0;
+ }
+ 
++static int wcd939x_codec_set_jack(struct snd_soc_component *comp,
++				  struct snd_soc_jack *jack, void *data)
++{
++	struct wcd939x_priv *wcd = dev_get_drvdata(comp->dev);
++	int ret;
++
++	if (!wcd->mbhc_cfg.typec_manual_audio)
++		return wcd939x_set_jack(wcd, jack);
++
++	mutex_lock(&wcd->audio_lock);
++	ret = wcd939x_set_jack(wcd, jack);
++	if (!ret) {
++		wcd->jack = jack;
++		/* The switch can connect before the sound card registers its jack. */
++		if (jack && wcd->audio_route)
++			ret = wcd_mbhc_typec_report_plug(wcd->wcd_mbhc);
++	}
++	mutex_unlock(&wcd->audio_lock);
++
++	return ret;
++}
++
+ static const struct snd_soc_component_driver soc_codec_dev_wcd939x = {
+ 	.name = "wcd939x_codec",
+ 	.probe = wcd939x_soc_codec_probe,
+@@ -3453,12 +3487,54 @@ static int wcd939x_typec_mux_set(struct typec_mux_dev *mux,
+ 
+ 	return 0;
+ }
++
++static int wcd939x_typec_audio_mux_set(struct typec_mux_dev *mux,
++				       struct typec_audio_route *route, bool connected)
++{
++	struct wcd939x_priv *wcd = typec_mux_get_drvdata(mux);
++	int ret = 0;
++
++	mutex_lock(&wcd->audio_lock);
++	if (connected) {
++		if (wcd->audio_route == route)
++			goto out;
++		if (wcd->audio_route) {
++			ret = -EBUSY;
++			goto out;
++		}
++
++		ret = route->connect(route);
++		if (ret)
++			goto out;
++		wcd->audio_route = route;
++
++		if (wcd->jack)
++			ret = wcd_mbhc_typec_report_plug(wcd->wcd_mbhc);
++	} else if (wcd->audio_route == route) {
++		wcd->audio_route = NULL;
++		if (wcd->jack)
++			ret = wcd_mbhc_typec_report_unplug(wcd->wcd_mbhc);
++	}
++out:
++	mutex_unlock(&wcd->audio_lock);
++	return ret;
++}
++
+ #endif /* CONFIG_TYPEC */
+ 
+ #if IS_ENABLED(CONFIG_TYPEC)
+ static bool wcd939x_swap_gnd_mic(struct snd_soc_component *component)
+ {
+ 	struct wcd939x_priv *wcd939x = snd_soc_component_get_drvdata(component);
++	bool swapped = false;
++
++	if (wcd939x->mbhc_cfg.typec_manual_audio) {
++		mutex_lock(&wcd939x->audio_lock);
++		if (wcd939x->audio_route)
++			swapped = wcd939x->audio_route->swap_mic_gnd(wcd939x->audio_route);
++		mutex_unlock(&wcd939x->audio_lock);
++		return swapped;
++	}
+ 
+ 	if (!wcd939x->typec_analog_mux || !wcd939x->typec_switch)
+ 		return false;
+@@ -3470,6 +3546,27 @@ static bool wcd939x_swap_gnd_mic(struct snd_soc_component *component)
+ 
+ 	return true;
+ }
++
++static bool wcd939x_has_dio4480(struct device *dev)
++{
++	struct device_node *ep;
++
++	if (!of_property_read_bool(dev->of_node, "mode-switch"))
++		return false;
++
++	for_each_endpoint_of_node(dev->of_node, ep) {
++		struct device_node *remote __free(device_node) =
++			of_graph_get_remote_port_parent(ep);
++
++		if (of_device_is_available(remote) &&
++		    of_device_is_compatible(remote, "dioo,dio4480")) {
++			of_node_put(ep);
++			return true;
++		}
++	}
++
++	return false;
++}
+ #endif /* CONFIG_TYPEC */
+ 
+ static int wcd939x_populate_dt_data(struct wcd939x_priv *wcd939x, struct device *dev)
+@@ -3506,16 +3603,14 @@ static int wcd939x_populate_dt_data(struct wcd939x_priv *wcd939x, struct device
+ 	wcd_dt_parse_mbhc_data(dev, cfg);
+ 
+ #if IS_ENABLED(CONFIG_TYPEC)
+-	/*
+-	 * Is node has a port and a valid remote endpoint
+-	 * consider HP lines are connected to the USBSS part
+-	 */
+ 	np = of_graph_get_remote_node(dev->of_node, 0, 0);
+-	if (np) {
++	cfg->typec_manual_audio = wcd939x_has_dio4480(dev);
++	if (np || cfg->typec_manual_audio) {
+ 		wcd939x->typec_analog_mux = true;
+ 		cfg->typec_analog_mux = true;
+ 		cfg->swap_gnd_mic = wcd939x_swap_gnd_mic;
+ 	}
++	of_node_put(np);
+ #endif /* CONFIG_TYPEC */
+ 
+ 	/*
+@@ -3625,7 +3720,7 @@ static int wcd939x_bind(struct device *dev)
+ 	 * typec_switch is fetched now to avoid a probe deadlock since
+ 	 * the USBSS depends on the typec_mux register in wcd939x_probe()
+ 	 */
+-	if (wcd939x->typec_analog_mux) {
++	if (wcd939x->typec_analog_mux && !wcd939x->mbhc_cfg.typec_manual_audio) {
+ 		wcd939x->typec_switch = fwnode_typec_switch_get(dev->fwnode);
+ 		if (IS_ERR(wcd939x->typec_switch))
+ 			return dev_err_probe(dev, PTR_ERR(wcd939x->typec_switch),
+@@ -3738,7 +3833,7 @@ err_unbind:
+ 	component_unbind_all(dev, wcd939x);
+ err_put_typec_switch:
+ #if IS_ENABLED(CONFIG_TYPEC)
+-	if (wcd939x->typec_analog_mux)
++	if (wcd939x->typec_analog_mux && !wcd939x->mbhc_cfg.typec_manual_audio)
+ 		typec_switch_put(wcd939x->typec_switch);
+ #endif /* CONFIG_TYPEC */
+ 
+@@ -3794,13 +3889,15 @@ static int wcd939x_add_typec(struct wcd939x_priv *wcd939x, struct device *dev)
+ 		.set = wcd939x_typec_switch_set,
+ 	};
+ 
+-	/*
+-	 * Is USBSS is used to mux analog lines,
+-	 * register a typec mux/switch to get typec events
+-	 */
++	/* Register callbacks for the external analog switch. */
+ 	if (!wcd939x->typec_analog_mux)
+ 		return 0;
+ 
++	if (wcd939x->mbhc_cfg.typec_manual_audio) {
++		mux_desc.set = NULL;
++		mux_desc.set_audio = wcd939x_typec_audio_mux_set;
++	}
++
+ 	typec_mux = typec_mux_register(dev, &mux_desc);
+ 	if (IS_ERR(typec_mux))
+ 		return dev_err_probe(dev, PTR_ERR(typec_mux),
+@@ -3808,7 +3905,8 @@ static int wcd939x_add_typec(struct wcd939x_priv *wcd939x, struct device *dev)
+ 
+ 	ret = devm_add_action_or_reset(dev, wcd939x_typec_mux_unregister,
+ 				       typec_mux);
+-	if (ret)
++	/* DIO4480 handles orientation at the connector. */
++	if (ret || wcd939x->mbhc_cfg.typec_manual_audio)
+ 		return ret;
+ 
+ 	typec_sw = typec_switch_register(dev, &sw_desc);
+@@ -3874,6 +3972,9 @@ static int wcd939x_probe(struct platform_device *pdev)
+ 		return -EINVAL;
+ 	}
+ 
++	if (wcd939x->mbhc_cfg.typec_manual_audio)
++		mutex_init(&wcd939x->audio_lock);
++
+ 	ret = wcd939x_add_typec(wcd939x, dev);
+ 	if (ret)
+ 		return ret;
