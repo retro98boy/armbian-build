@@ -9,13 +9,13 @@ the PHY is not awake-enabled by WoL. PHY_ALWAYS_CALL_SUSPEND makes
 it run the callback anyway as long as the PHY has been configured
 for WoL.
 
-The keep-awake suspend path then rewrites the interrupt mask (which
-aliases MII_88E1318S_PHY_CSIER) down to only the WoL event enable
-bit, keeps the copper receiver running, and suspends the fiber
-interface that would otherwise keep asserting the shared interrupt.
-The resume callback restores the normal interrupt mask. A failed
-keep-awake suspend unwinds the register changes, because phy_suspend()
-treats a nonzero callback return as a fatal error and skips resume.
+The keep-awake suspend path then rewrites the interrupt mask down to
+only the WoL event enable bit, keeps the copper receiver running, and
+suspends the fiber interface that would otherwise keep asserting the
+shared interrupt. The resume callback restores the normal interrupt
+mask. A failed keep-awake suspend unwinds the register changes, because
+phy_suspend() treats a nonzero callback return as a fatal error and
+skips resume.
 
 When the WoL event cannot reach the system (no wake-capable IRQ), the
 PHY reverts to normal suspend instead of staying powered for a
@@ -24,27 +24,37 @@ awake, because the MAC still needs it to receive and forward packets.
 
 Assisted-by: LLM
 Signed-off-by: Rosen Penev <rosenp@gmail.com>
+[iav: rebased onto 7.3.6; the mask restored on resume and on a failed
+ suspend is the one m88e1318_config_intr() sets, WoL event included]
+Signed-off-by: Igor Velkov <iav@iav.lv>
 ---
- drivers/net/phy/marvell.c | 248 +++++++++-
- 1 file changed, 231 insertions(+), 17 deletions(-)
+ drivers/net/phy/marvell.c | 253 +++++++++-
+ 1 file changed, 236 insertions(+), 17 deletions(-)
 
 diff --git a/drivers/net/phy/marvell.c b/drivers/net/phy/marvell.c
 index 111111111111..222222222222 100644
 --- a/drivers/net/phy/marvell.c
 +++ b/drivers/net/phy/marvell.c
-@@ -1908,6 +1908,108 @@ static int marvell_resume(struct phy_device *phydev)
+@@ -1960,6 +1960,113 @@ static int marvell_resume(struct phy_device *phydev)
  	return err;
  }
  
++/* Interrupt mask of a running 88E1318S/88E1510, as m88e1318_config_intr()
++ * sets it. Call with the MDIO bus lock held.
++ */
++static u16 marvell_wol_running_imask(struct phy_device *phydev)
++{
++	u16 imask = phydev->interrupts == PHY_INTERRUPT_ENABLED ?
++		    MII_M1011_IMASK_INIT : MII_M1011_IMASK_CLEAR;
++
++	return imask | m88e1318_wol_imask(phydev);
++}
++
 +/* marvell_wol_suspend_intrs
 + *
 + * With WoL enabled the copper interface has to stay powered to keep
 + * detecting a WoL packet, so instead of entering low power mode, mask
-+ * all interrupt sources except the WoL event. On the
-+ * 88E1318S/88E1510 the interrupt mask (MII_M1011_IMASK) is the same
-+ * register as the Copper Specific Interrupt Enable Register
-+ * (MII_88E1318S_PHY_CSIER), so writing only the WoL event enable bit
-+ * unmasks just that event.
++ * all interrupt sources except the WoL event.
 + *
 + * On dual-media PHYs the fiber interface is suspended as well: left
 + * powered with its normal interrupt sources it could still assert the
@@ -61,8 +71,8 @@ index 111111111111..222222222222 100644
 +
 +	ret = marvell_write_page(phydev, MII_MARVELL_COPPER_PAGE);
 +	if (ret >= 0) {
-+		ret = __phy_write(phydev, MII_88E1318S_PHY_CSIER,
-+				  MII_88E1318S_PHY_CSIER_WOL_EIE);
++		ret = __phy_write(phydev, MII_M1011_IMASK,
++				  MII_M1011_IMASK_WOL);
 +		if (ret >= 0)
 +			intrs_masked = true;
 +	}
@@ -100,8 +110,8 @@ index 111111111111..222222222222 100644
 +			__phy_clear_bits(phydev, MII_BMCR, BMCR_PDOWN);
 +		if (intrs_masked &&
 +		    marvell_write_page(phydev, MII_MARVELL_COPPER_PAGE) >= 0)
-+			__phy_write(phydev, MII_88E1318S_PHY_CSIER,
-+				    MII_M1011_IMASK_INIT);
++			__phy_write(phydev, MII_M1011_IMASK,
++				    marvell_wol_running_imask(phydev));
 +	}
 +
 +restore:
@@ -111,11 +121,9 @@ index 111111111111..222222222222 100644
 +/* marvell_wol_resume_intrs
 + *
 + * On the keep-awake WoL suspend path marvell_wol_suspend_intrs()
-+ * rewrites the whole MII_M1011_IMASK register (which is
-+ * MII_88E1318S_PHY_CSIER) down to only the WoL event enable bit.
-+ * Restore the normal interrupt mask so link and other PHY events are
-+ * reported again after resume. The WoL-only mask is applied again on
-+ * the next keep-awake suspend.
++ * rewrites the whole MII_M1011_IMASK register down to only the WoL
++ * event enable bit. Restore the normal interrupt mask so link and
++ * other PHY events are reported again after resume.
 + */
 +static int marvell_wol_resume_intrs(struct phy_device *phydev)
 +{
@@ -132,8 +140,8 @@ index 111111111111..222222222222 100644
 +	if (ret < 0)
 +		goto restore;
 +
-+	ret = __phy_write(phydev, MII_88E1318S_PHY_CSIER,
-+			  MII_M1011_IMASK_INIT);
++	ret = __phy_write(phydev, MII_M1011_IMASK,
++			  marvell_wol_running_imask(phydev));
 +restore:
 +	return phy_restore_page(phydev, oldpage, ret);
 +}
@@ -141,7 +149,7 @@ index 111111111111..222222222222 100644
  /* m88e1510_resume
   *
   * The 88e1510 PHY has an erratum where the phy downshift counter is not cleared
-@@ -1940,9 +2042,50 @@ static int m88e1510_resume(struct phy_device *phydev)
+@@ -1992,9 +2099,50 @@ static int m88e1510_resume(struct phy_device *phydev)
  
  		/* downshift enabled, with previous counter value */
  		err = m88e1011_set_downshift(phydev, cnt);
@@ -193,7 +201,7 @@ index 111111111111..222222222222 100644
  }
  
  static int marvell_aneg_done(struct phy_device *phydev)
-@@ -2143,6 +2286,12 @@ static int m88e1318_set_wol(struct phy_device *phydev,
+@@ -2182,6 +2330,12 @@ static int m88e1318_set_wol(struct phy_device *phydev,
  
  	if (device_can_wakeup(dev) && wol_enable != device_may_wakeup(dev)) {
  		err = device_set_wakeup_enable(dev, wol_enable);
@@ -206,7 +214,7 @@ index 111111111111..222222222222 100644
  		if (err < 0) {
  			/* Roll back the PHY WoL config if the PM state update failed */
  			struct ethtool_wolinfo wol_off = { .wolopts = 0 };
-@@ -2158,6 +2307,50 @@ static int m88e1318_set_wol(struct phy_device *phydev,
+@@ -2197,6 +2351,50 @@ static int m88e1318_set_wol(struct phy_device *phydev,
  	return err;
  }
  
@@ -257,7 +265,7 @@ index 111111111111..222222222222 100644
  static int marvell_get_sset_count(struct phy_device *phydev)
  {
  	if (linkmode_test_bit(ETHTOOL_LINK_MODE_FIBRE_BIT,
-@@ -3676,19 +3869,39 @@ static int marvell_probe(struct phy_device *phydev)
+@@ -3715,19 +3913,39 @@ static int marvell_probe(struct phy_device *phydev)
  
  	phydev->priv = priv;
  
@@ -307,7 +315,7 @@ index 111111111111..222222222222 100644
  }
  
  static int m88e1510_port_configure_serdes(struct phy_port *port, bool enable,
-@@ -3906,7 +4119,8 @@ static struct phy_driver marvell_drivers[] = {
+@@ -3945,7 +4163,8 @@ static struct phy_driver marvell_drivers[] = {
  		.phy_id_mask = MARVELL_PHY_ID_MASK,
  		.name = "Marvell 88E1318S",
  		/* PHY_GBIT_FEATURES */
@@ -317,8 +325,8 @@ index 111111111111..222222222222 100644
  		.config_init = m88e1318_config_init,
  		.config_aneg = m88e1318_config_aneg,
  		.read_status = marvell_read_status,
-@@ -3914,8 +4128,8 @@ static struct phy_driver marvell_drivers[] = {
- 		.handle_interrupt = marvell_handle_interrupt,
+@@ -3953,8 +4172,8 @@ static struct phy_driver marvell_drivers[] = {
+ 		.handle_interrupt = m88e1318_handle_interrupt,
  		.get_wol = m88e1318_get_wol,
  		.set_wol = m88e1318_set_wol,
 -		.resume = genphy_resume,
@@ -328,7 +336,7 @@ index 111111111111..222222222222 100644
  		.read_page = marvell_read_page,
  		.write_page = marvell_write_page,
  		.get_sset_count = marvell_get_sset_count,
-@@ -4013,8 +4227,8 @@ static struct phy_driver marvell_drivers[] = {
+@@ -4052,8 +4271,8 @@ static struct phy_driver marvell_drivers[] = {
  		.name = "Marvell 88E1510",
  		.driver_data = DEF_MARVELL_HWMON_OPS(m88e1510_hwmon_ops),
  		.features = PHY_GBIT_FIBRE_FEATURES,
@@ -339,7 +347,7 @@ index 111111111111..222222222222 100644
  		.config_init = m88e1510_config_init,
  		.config_aneg = m88e1510_config_aneg,
  		.read_status = marvell_read_status,
-@@ -4023,7 +4237,7 @@ static struct phy_driver marvell_drivers[] = {
+@@ -4062,7 +4281,7 @@ static struct phy_driver marvell_drivers[] = {
  		.get_wol = m88e1318_get_wol,
  		.set_wol = m88e1318_set_wol,
  		.resume = m88e1510_resume,

@@ -1,0 +1,35 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Juan Sanchez Fuentes <juanesf91@gmail.com>
+Date: Sat, 25 Oct 2025 10:00:00 +0000
+Subject: Enable PCIe, NVMe, SPI and GPIO support in radxa-cubie-a5e_defconfig
+
+Signed-off-by: Juan Sanchez Fuentes <juanesf91@gmail.com>
+Assisted-by: opencode:big-pickle
+---
+ configs/radxa-cubie-a5e_defconfig | 15 +++++++++++++++
+ 1 file changed, 15 insertions(+)
+
+diff --git a/configs/radxa-cubie-a5e_defconfig b/configs/radxa-cubie-a5e_defconfig
+--- a/configs/radxa-cubie-a5e_defconfig
++++ b/configs/radxa-cubie-a5e_defconfig
+@@ -42,3 +42,18 @@ CONFIG_AXP_DCDC3_VOLT=1100
+ CONFIG_SPI=y
+ CONFIG_USB_EHCI_HCD=y
+ CONFIG_USB_OHCI_HCD=y
++CONFIG_PHY_SUN55I_PCIE_USB3=y
++CONFIG_PCI=y
++CONFIG_PCIE_SUN55I_RC=y
++CONFIG_DM_PCI_COMPAT=y
++CONFIG_NVME=y
++CONFIG_NVME_PCI=y
++CONFIG_CMD_PCI=y
++CONFIG_CMD_PART=y
++CONFIG_CMD_GPIO=y
++CONFIG_CMD_LSBLK=y
++CONFIG_CMD_CAT=y
++CONFIG_BLKMAP=y
++CONFIG_CMD_SF=y
++CONFIG_BOOTDEV_SPI_FLASH=y
++CONFIG_CMD_BOOTDEV=y
+-- 
+Armbian

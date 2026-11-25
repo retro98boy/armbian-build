@@ -286,8 +286,8 @@ index 111111111111..222222222222 100644
 +#include <dt-bindings/clock/sun8i-tcon-top.h>
 +#include <dt-bindings/reset/sun8i-de2.h>
  #include <dt-bindings/clock/sun55i-a523-ccu.h>
- #include <dt-bindings/thermal/thermal.h>
  #include <dt-bindings/clock/sun55i-a523-mcu-ccu.h>
+ #include <dt-bindings/clock/sun55i-a523-r-ccu.h>
 @@ -19,6 +22,12 @@ / {
  	#address-cells = <2>;
  	#size-cells = <2>;
@@ -530,7 +530,7 @@ index 111111111111..222222222222 100644
  		pio: pinctrl@2000000 {
  			compatible = "allwinner,sun55i-a523-pinctrl";
  			reg = <0x2000000 0x800>;
-@@ -611,6 +842,13 @@ syscon: syscon@3000000 {
+@@ -635,6 +866,13 @@ syscon: syscon@3000000 {
  			#address-cells = <1>;
  			#size-cells = <1>;
  			ranges;
@@ -657,7 +657,7 @@ index 111111111111..222222222222 100644
  				regulator-min-microvolt = <1800000>;
  				regulator-max-microvolt = <1800000>;
  				regulator-name = "vcc-pc-and-their-dog";
-@@ -501,3 +555,18 @@ &usbc1 {
+@@ -507,3 +561,18 @@ &usbc1 {
  	status = "okay";
  };
  
@@ -718,7 +718,7 @@ index 111111111111..222222222222 100644
  };
  
  &ehci0 {
-@@ -567,3 +591,18 @@ &e906_rproc {
+@@ -570,3 +594,18 @@ &e906_rproc {
  			<&rv_vdev0vring1>, <&e906_dram_reserved>;
  	status = "okay";
  };
@@ -795,7 +795,7 @@ index 111111111111..222222222222 100644
  	ext_osc32k: ext-osc32k-clk {
  		#clock-cells = <0>;
  		compatible = "fixed-clock";
-@@ -472,3 +519,18 @@ &usbphy {
+@@ -475,3 +522,18 @@ &usbphy {
  	usb1_vbus-supply = <&reg_usb_vbus>;
  	status = "okay";
  };
@@ -837,7 +837,7 @@ index 111111111111..222222222222 100644
  	},
  };
  
-@@ -904,6 +905,23 @@ static SUNXI_CCU_GATE_HWS(bus_display1_top_clk, "bus-display1-top", ahb_hws,
+@@ -884,6 +885,23 @@ static SUNXI_CCU_GATE_HWS(bus_display1_top_clk, "bus-display1-top", ahb_hws,
  
  static SUNXI_CCU_GATE_DATA(hdmi_24M_clk, "hdmi-24M", osc24M, 0xb04, BIT(31), 0);
  
@@ -861,7 +861,7 @@ index 111111111111..222222222222 100644
  static SUNXI_CCU_GATE_HWS_WITH_PREDIV(hdmi_cec_32k_clk, "hdmi-cec-32k",
  				      pll_periph0_2x_hws,
  				      0xb10, BIT(30), 36621, 0);
-@@ -1329,6 +1347,7 @@ static struct ccu_common *sun55i_a523_ccu_clks[] = {
+@@ -1309,6 +1327,7 @@ static struct ccu_common *sun55i_a523_ccu_clks[] = {
  	&bus_display0_top_clk.common,
  	&bus_display1_top_clk.common,
  	&hdmi_24M_clk.common,
@@ -869,7 +869,7 @@ index 111111111111..222222222222 100644
  	&hdmi_cec_32k_clk.common,
  	&hdmi_cec_clk.common,
  	&bus_hdmi_clk.common,
-@@ -1513,6 +1532,7 @@ static struct clk_hw_onecell_data sun55i_a523_hw_clks = {
+@@ -1493,6 +1512,7 @@ static struct clk_hw_onecell_data sun55i_a523_hw_clks = {
  		[CLK_BUS_DISPLAY0_TOP]	= &bus_display0_top_clk.common.hw,
  		[CLK_BUS_DISPLAY1_TOP]	= &bus_display1_top_clk.common.hw,
  		[CLK_HDMI_24M]		= &hdmi_24M_clk.common.hw,
@@ -877,7 +877,7 @@ index 111111111111..222222222222 100644
  		[CLK_HDMI_CEC_32K]	= &hdmi_cec_32k_clk.common.hw,
  		[CLK_HDMI_CEC]		= &hdmi_cec_clk.common.hw,
  		[CLK_BUS_HDMI]		= &bus_hdmi_clk.common.hw,
-@@ -1556,7 +1576,7 @@ static struct clk_hw_onecell_data sun55i_a523_hw_clks = {
+@@ -1536,7 +1556,7 @@ static struct clk_hw_onecell_data sun55i_a523_hw_clks = {
  		[CLK_NPU]		= &npu_clk.common.hw,
  		[CLK_USB3_REF]		= &usb3_ref_clk.common.hw,
  	},

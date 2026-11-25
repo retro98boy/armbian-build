@@ -2,6 +2,9 @@
 # Overlay names: see "Device tree overlay names" in config/boards/README.md of armbian/build.
 dtbo-$(CONFIG_ARCH_ROCKCHIP) += \
 	hinlink-h88k-240x135-lcd.dtbo \
+	lckfb-tspi-3m-dsi-1200x1920-10-1inch.dtbo \
+	lckfb-tspi-3m-dsi-c41409463.dtbo \
+	lckfb-tspi-3m-dsi-c42388916.dtbo \
 	rk35xx-radxa-zero-3w-ext-ant.dtbo \
 	rk3308-uart1.dtbo rk3308-uart2.dtbo rk3308-uart3.dtbo \
 	rk3308-otg-host.dtbo \
@@ -50,6 +53,7 @@ dtbo-$(CONFIG_ARCH_ROCKCHIP) += \
 	rk3562-kickpi-k3b-demo-dsi-panel.dtbo \
 	rockchip-rk3566-sata2.dtbo \
 	rockchip-rk3566-i2c2-m1.dtbo \
+	rockchip-rk3566-opp-2ghz.dtbo \
 	rockchip-rk3566-eltay-rm66-pdm.dtbo \
 	rockchip-rk3566-eltay-rm66-pocketterm35-touch-5d.dtbo \
 	rockchip-rk3566-i2c3-m0.dtbo \
@@ -87,6 +91,7 @@ dtbo-$(CONFIG_ARCH_ROCKCHIP) += \
 	rockchip-rk3588-can2-m0.dtbo \
 	rockchip-rk3588-can2-m1.dtbo \
 	rockchip-rk3588-i2c8-m2.dtbo \
+	rockchip-rk3588-mekotronics-r58x-pro-lcd.dtbo \
 	rockchip-rk3588-pwm0-m0.dtbo \
 	rockchip-rk3588-pwm0-m1.dtbo \
 	rockchip-rk3588-pwm0-m2.dtbo \

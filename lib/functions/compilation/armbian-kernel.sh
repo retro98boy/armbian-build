@@ -147,6 +147,7 @@ function armbian_kernel_config__600_enable_ebpf_and_btf_info() {
 			"BPF_JIT" "BPF_JIT_DEFAULT_ON" "FTRACE_SYSCALLS" "PROBE_EVENTS_BTF_ARGS" "BPF_KPROBE_OVERRIDE" # eBPF == on
 			"BPF_UNPRIV_DEFAULT_OFF"
 			"DEBUG_INFO" "DEBUG_INFO_DWARF5" "DEBUG_INFO_BTF" "DEBUG_INFO_BTF_MODULES" # BTF & CO-RE == on
+			"MODULE_ALLOW_BTF_MISMATCH"                                            # Load modules with a mismatched split BTF instead of rejecting them
 		)
 
 		# Extra eBPF-related stuff for eBPF tooling like Tetragon
@@ -516,6 +517,15 @@ function armbian_kernel_config__enable_various_filesystems() {
 	opts_m+=("EROFS_FS")           # Enhanced Read-Only FS (useful for Docker images)
 }
 
+# Enables dm-crypt for an encrypted root (CRYPTROOT_ENABLE, armbian-install).
+# BLK_DEV_DM is built-in: DM_INIT and a built-in DM_VERITY need it, and =m would downgrade them.
+function armbian_kernel_config__enable_dm_crypt() {
+	opts_y+=("MD")          # Parent menu of the device mapper
+	opts_y+=("BLK_DEV_DM")  # Device mapper core
+	opts_m+=("DM_CRYPT")    # dm-crypt target (cryptsetup, LUKS)
+	opts_m+=("CRYPTO_XTS")  # aes-xts-plain64, the LUKS default cipher mode
+}
+
 # Enables SMB/CIFS file sharing as modules: the client and the ksmbd server.
 function armbian_kernel_config__enable_smb_cifs() {
 	opts_y+=("NETWORK_FILESYSTEMS") # Parent menu, off in some minimal configs
@@ -529,6 +539,13 @@ function armbian_kernel_config__enable_smb_cifs() {
 	if linux-version compare "${KERNEL_MAJOR_MINOR}" ge 5.15; then
 		opts_m+=("SMB_SERVER") # ksmbd, in-kernel SMB3 server
 	fi
+}
+
+# Enables Ceph clients as modules: CephFS and RBD block devices.
+function armbian_kernel_config__enable_ceph() {
+	opts_y+=("NETWORK_FILESYSTEMS") # Parent menu, off in some minimal configs
+	opts_m+=("CEPH_FS")             # CephFS client (mount -t ceph)
+	opts_m+=("BLK_DEV_RBD")         # RADOS block device (/dev/rbdX)
 }
 
 # Enables Docker support by configuring a comprehensive set of kernel options required for Docker functionality.

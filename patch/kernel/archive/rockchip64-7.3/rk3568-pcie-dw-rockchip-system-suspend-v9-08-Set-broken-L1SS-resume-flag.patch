@@ -1,0 +1,51 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Sebastian Reichel <sebastian.reichel@collabora.com>
+Date: Thu, 5 Nov 2026 14:33:16 +0100
+Subject: PCI: dw-rockchip: Set broken L1SS resume flag
+
+During system suspend, the Rockchip RC driver effectively powers off the
+controller. If the link is in L1SS and the endpoint asserts CLKREQ# to
+exit L1SS, the time required to wake the system and restore the
+PHY/REFCLK may exceed the L1SS exit timing (L10_REFCLK_ON +
+T_COMMONMODE), resulting in Link Down (LDn) and a reset of the endpoint.
+Set broken_l1ss_resume flag to indicate this limitation to the PCIe
+framework. This results in pci_suspend_retains_context() returning false
+and PCIe client can avoid relying on device state being preserved
+during system suspend.
+
+Signed-off-by: Sebastian Reichel <sebastian.reichel@collabora.com>
+Signed-off-by: Manivannan Sadhasivam <manivannan.sadhasivam@oss.qualcomm.com>
+Tested-by: Igor Velkov <iav@iav.lv>
+Reviewed-by: Shawn Lin <shawn.lin@rock-chips.com>
+Link: https://patch.msgid.link/20261105-rockchip-pcie-system-suspend-v9-8-a2e55846649e@collabora.com
+---
+ drivers/pci/controller/dwc/pcie-dw-rockchip.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/drivers/pci/controller/dwc/pcie-dw-rockchip.c b/drivers/pci/controller/dwc/pcie-dw-rockchip.c
+index 111111111111..222222222222 100644
+--- a/drivers/pci/controller/dwc/pcie-dw-rockchip.c
++++ b/drivers/pci/controller/dwc/pcie-dw-rockchip.c
+@@ -447,6 +447,11 @@ static int rockchip_pcie_host_init(struct dw_pcie_rp *pp)
+ 	return 0;
+ }
+ 
++static void rockchip_pcie_host_post_init(struct dw_pcie_rp *pp)
++{
++	pp->bridge->broken_l1ss_resume = true;
++}
++
+ static void rockchip_pcie_pme_turn_off(struct dw_pcie_rp *pp)
+ {
+ 	struct dw_pcie *pci = to_dw_pcie_from_pp(pp);
+@@ -486,6 +491,7 @@ static void rockchip_pcie_pme_turn_off(struct dw_pcie_rp *pp)
+ 
+ static const struct dw_pcie_host_ops rockchip_pcie_host_ops = {
+ 	.init = rockchip_pcie_host_init,
++	.post_init = rockchip_pcie_host_post_init,
+ 	.pme_turn_off = rockchip_pcie_pme_turn_off,
+ };
+ 
+-- 
+Armbian
+

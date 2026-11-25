@@ -21,15 +21,15 @@ diff --git a/drivers/media/platform/qcom/iris/iris_core.c b/drivers/media/platfo
 index 111111111111..222222222222 100644
 --- a/drivers/media/platform/qcom/iris/iris_core.c
 +++ b/drivers/media/platform/qcom/iris/iris_core.c
-@@ -7,6 +7,7 @@
- 
+@@ -8,6 +8,7 @@
  #include "iris_core.h"
+ #include "iris_ctrls.h"
  #include "iris_firmware.h"
 +#include "iris_instance.h"
  #include "iris_state.h"
  #include "iris_vpu_common.h"
  
-@@ -32,6 +33,29 @@ void iris_core_deinit(struct iris_core *core)
+@@ -33,6 +34,29 @@ void iris_core_deinit(struct iris_core *core)
  		pm_runtime_put_sync(core->dev);
  }
  

@@ -71,6 +71,9 @@ function do_main_configuration() {
 	# Fix old U-Boot pylibfdt failing against SWIG >= 4.3 (trixie). No-op on newer U-Boot. Can be removed when all U-Boot versions are >= v2026.07.
 	enable_extension "uboot-fix-pylibfdt-swig"
 
+	# fake-hwclock 0.14 sets the clock backwards on load (Debian #1093227). No-op on other versions. Can be removed when all releases ship a fixed fake-hwclock.
+	enable_extension "fake-hwclock-load-fix"
+
 	# Network stack to use, default to network-manager; configuration can override this.
 	# Will be made read-only further down.
 	declare -g NETWORKING_STACK="${NETWORKING_STACK}"
@@ -330,6 +333,7 @@ function do_main_configuration() {
 	ATF_COMPILE=yes              # @TODO: move to armhf/arm64
 	[[ -z $EXTRAWIFI ]] && EXTRAWIFI="yes"
 	[[ -z $PLYMOUTH ]] && PLYMOUTH="yes"
+	[[ -z $BOOT_LOGO ]] && BOOT_LOGO="desktop" # Plymouth logo on desktop images; "yes" also on minimal, "no" never
 	[[ -z $AUFS ]] && AUFS="yes"
 	[[ -z $IMAGE_PARTITION_TABLE ]] && IMAGE_PARTITION_TABLE="msdos"
 	[[ -z $EXTRA_BSP_NAME ]] && EXTRA_BSP_NAME=""
@@ -689,6 +693,7 @@ function check_filesystem_compatibility_on_host() {
 		if ! grep -q "\<$ROOTFS_TYPE\>" /proc/filesystems; then # ensure exact match with \<...\>
 			# Try modprobing the fs module since it doesn't show up in /proc/filesystems if it's an unloaded module versus built-in
 			if ! modprobe "$ROOTFS_TYPE"; then
+				display_alert "Load the module on the build host, then build again" "sudo modprobe $ROOTFS_TYPE" "wrn"
 				exit_with_error "Filesystem type unsupported by build host:" "$ROOTFS_TYPE"
 			else
 				display_alert "Sucessfully loaded kernel module for filesystem" "$ROOTFS_TYPE" ""

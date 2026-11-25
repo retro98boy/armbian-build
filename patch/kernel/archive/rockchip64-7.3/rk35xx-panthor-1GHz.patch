@@ -212,7 +212,7 @@ index 111111111111..222222222222 100644
  		opp-300000000 {
  			opp-hz = /bits/ 64 <300000000>;
  			opp-microvolt = <712500 712500 875000>;
-@@ -1285,10 +1291,10 @@ power-domain@RK3576_PD_VO1 {
+@@ -1365,10 +1371,10 @@ rknn_mmu_1: iommu@2770a000 {
  		gpu: gpu@27800000 {
  			compatible = "rockchip,rk3576-mali", "arm,mali-bifrost";
  			reg = <0x0 0x27800000 0x0 0x20000>;
@@ -603,7 +603,7 @@ diff --git a/drivers/gpu/drm/panfrost/panfrost_drv.c b/drivers/gpu/drm/panfrost/
 index 111111111111..222222222222 100644
 --- a/drivers/gpu/drm/panfrost/panfrost_drv.c
 +++ b/drivers/gpu/drm/panfrost/panfrost_drv.c
-@@ -1153,6 +1153,17 @@ static const struct panfrost_compatible mediatek_mt8370_data = {
+@@ -1152,6 +1152,17 @@ static const struct panfrost_compatible mediatek_mt8370_data = {
  	.gpu_quirks = BIT(GPU_QUIRK_FORCE_AARCH64_PGTABLE),
  };
  

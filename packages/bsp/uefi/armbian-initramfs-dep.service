@@ -1,0 +1,13 @@
+[Unit]
+Description=Armbian: make the initramfs for this machine only
+After=local-fs.target armbian-firstrun.service
+# Live ISO: the root is a RAM overlay. The installed system runs it.
+ConditionPathExists=!/run/live
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/armbian/armbian-initramfs-dep
+Nice=10
+
+[Install]
+WantedBy=multi-user.target
