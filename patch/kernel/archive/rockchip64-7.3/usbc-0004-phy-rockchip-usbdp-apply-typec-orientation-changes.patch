@@ -8,14 +8,14 @@ Link: https://lore.kernel.org/all/20260915-rockchip-usbdp-cleanup-part2-v15-3-8d
 
 Signed-off-by: retro98boy <retro98boy@qq.com>
 ---
- drivers/phy/rockchip/phy-rockchip-usbdp.c |   78 ++++++++++++++++-------------
- 1 file changed, 44 insertions(+), 34 deletions(-)
+ drivers/phy/rockchip/phy-rockchip-usbdp.c |   51 ++++++++++++++++------------
+ 1 file changed, 28 insertions(+), 23 deletions(-)
 
 diff --git a/drivers/phy/rockchip/phy-rockchip-usbdp.c b/drivers/phy/rockchip/phy-rockchip-usbdp.c
 --- a/drivers/phy/rockchip/phy-rockchip-usbdp.c
 +++ b/drivers/phy/rockchip/phy-rockchip-usbdp.c
-@@ -650,10 +650,14 @@
- 	udphy->mode = UDPHY_MODE_DP_USB;
+@@ -627,10 +627,14 @@ static void rk_udphy_set_typec_default_mapping(struct rk_udphy *udphy)
+ 	udphy->dp_lanes = 2;
  }
  
 +static int rk_udphy_power_on(struct rk_udphy *udphy, u8 mode);
@@ -29,13 +29,13 @@ diff --git a/drivers/phy/rockchip/phy-rockchip-usbdp.c b/drivers/phy/rockchip/ph
  
  	mutex_lock(&udphy->mutex);
  
-@@ -665,13 +669,23 @@
+@@ -642,13 +646,23 @@ static int rk_udphy_orien_sw_set(struct typec_switch_dev *sw,
  		goto unlock_ret;
  	}
  
 -	udphy->flip = orien == TYPEC_ORIENTATION_REVERSE;
-+	if (udphy->flip != flipped || udphy->mode != UDPHY_MODE_DP_USB)
-+		udphy->mode_change = true;
++	if (udphy->flip != flipped)
++		udphy->phy_needs_reinit = true;
 +
 +	udphy->flip = flipped;
  	rk_udphy_set_typec_default_mapping(udphy);
@@ -55,58 +55,44 @@ diff --git a/drivers/phy/rockchip/phy-rockchip-usbdp.c b/drivers/phy/rockchip/ph
  }
  
  static void rk_udphy_orien_switch_unregister(void *data)
-@@ -998,39 +1012,38 @@
+@@ -968,26 +982,26 @@ static int rk_udphy_power_on(struct rk_udphy *udphy, u8 mode)
  		return 0;
  	}
  
 -	if (udphy->status == UDPHY_MODE_NONE) {
--		udphy->mode_change = false;
 -		ret = rk_udphy_setup(udphy);
--		if (ret)
++	if (udphy->status == UDPHY_MODE_NONE || udphy->phy_needs_reinit) {
++		ret = phy_notify_reset(udphy->phy_u3, PHY_NOTIFY_PRE_RESET);
+ 		if (ret)
 -			return ret;
--
--		if (udphy->mode & UDPHY_MODE_USB)
++			goto notify;
+ 
+-		if (!udphy->hs && udphy->mode & UDPHY_MODE_USB)
 -			rk_udphy_u3_port_disable(udphy, false);
--	} else if (udphy->mode_change) {
--		udphy->mode_change = false;
--		udphy->status = UDPHY_MODE_NONE;
--		if (udphy->mode == UDPHY_MODE_DP)
--			rk_udphy_u3_port_disable(udphy, true);
--
+-		udphy->phy_needs_reinit = false;
+-	} else if (udphy->phy_needs_reinit) {
+ 		rk_udphy_u3_port_disable(udphy, true);
+ 		udelay(10);
+ 
 -		rk_udphy_disable(udphy);
 -		ret = rk_udphy_setup(udphy);
--		if (ret)
++		/* Keep clocks enabled when reinitializing an active PHY. */
++		ret = udphy->status ? rk_udphy_init(udphy) : rk_udphy_setup(udphy);
+ 		if (ret)
 -			return ret;
--	}
--
-+	if (udphy->status && !udphy->mode_change)
-+		goto out;
-+
-+	ret = phy_notify_reset(udphy->phy_u3, PHY_NOTIFY_PRE_RESET);
-+	if (ret)
-+		goto notify;
-+
-+	/* Keep xHCI clocked from UTMI while the PHY restarts. */
-+	rk_udphy_u3_port_disable(udphy, true);
-+	udelay(10);
-+
-+	/* Preserve clocks and consumer state when reconfiguring an active PHY. */
-+	ret = udphy->status ? rk_udphy_init(udphy) : rk_udphy_setup(udphy);
-+	if (ret)
-+		goto notify;
-+
-+	if (!udphy->hs && (udphy->mode & UDPHY_MODE_USB))
-+		rk_udphy_u3_port_disable(udphy, false);
-+	udphy->mode_change = false;
++			goto notify;
+ 
+ 		if (!udphy->hs && udphy->mode & UDPHY_MODE_USB)
+ 			rk_udphy_u3_port_disable(udphy, false);
+ 		udphy->phy_needs_reinit = false;
 +notify:
-+	phy_notify_reset(udphy->phy_u3, PHY_NOTIFY_POST_RESET);
-+	if (ret)
-+		return ret;
-+out:
++		phy_notify_reset(udphy->phy_u3, PHY_NOTIFY_POST_RESET);
++		if (ret)
++			return ret;
+ 	}
+ 
  	udphy->status |= mode;
--
- 	return 0;
- }
+@@ -997,12 +1011,8 @@ static int rk_udphy_power_on(struct rk_udphy *udphy, u8 mode)
  
  static void rk_udphy_power_off(struct rk_udphy *udphy, u8 mode)
  {
@@ -121,16 +107,7 @@ diff --git a/drivers/phy/rockchip/phy-rockchip-usbdp.c b/drivers/phy/rockchip/ph
  		return;
  
  	udphy->status &= ~mode;
-@@ -1203,6 +1216,8 @@
- 	struct phy_configure_opts_dp *dp = &opts->dp;
- 	u32 i, val, lane;
- 	int ret;
-+
-+	guard(mutex)(&udphy->mutex);
- 
- 	if (dp->set_rate) {
- 		ret = rk_udphy_dp_phy_verify_link_rate(udphy, dp);
-@@ -1327,13 +1342,8 @@
+@@ -1274,13 +1284,8 @@ static int rk_udphy_usb3_phy_exit(struct phy *phy)
  	struct rk_udphy *udphy = phy_get_drvdata(phy);
  
  	mutex_lock(&udphy->mutex);
