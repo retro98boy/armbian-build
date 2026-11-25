@@ -1,0 +1,192 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: retro98boy <retro98boy@qq.com>
+Date: Wed, 25 Nov 2026 11:19:17 +0800
+Subject: [PATCH] wifi: ath12k: prefer board-specific board-2.bin
+
+The Lenovo Legion Y700 Gen4 and AYN Odin 3 share PCI and QMI identifiers
+but need different board data. Check the firmware-name directory for
+board data first.
+
+Fall back to the shared board-2.bin when the board-specific file is absent.
+Keep regulatory data and board.bin lookup unchanged.
+
+Signed-off-by: retro98boy <retro98boy@qq.com>
+---
+ drivers/net/wireless/ath/ath12k/core.c | 75 +++++++++++++++++---------
+ 1 file changed, 51 insertions(+), 24 deletions(-)
+
+diff --git a/drivers/net/wireless/ath/ath12k/core.c b/drivers/net/wireless/ath/ath12k/core.c
+index b25202e..50697cb 100644
+--- a/drivers/net/wireless/ath/ath12k/core.c
++++ b/drivers/net/wireless/ath/ath12k/core.c
+@@ -282,18 +282,12 @@ static int ath12k_core_create_bus_type_board_name(struct ath12k_base *ab, char *
+ 	return __ath12k_core_create_board_name(ab, name, name_len, false, true, true);
+ }
+ 
+-const struct firmware *ath12k_core_firmware_request(struct ath12k_base *ab,
+-						    const char *file)
++static const struct firmware *
++ath12k_core_firmware_request_path(struct ath12k_base *ab, const char *path)
+ {
+ 	const struct firmware *fw;
+-	char path[100];
+ 	int ret;
+ 
+-	if (!file)
+-		return ERR_PTR(-ENOENT);
+-
+-	ath12k_core_create_firmware_path(ab, file, path, sizeof(path));
+-
+ 	ret = firmware_request_nowarn(&fw, path, ab->dev);
+ 	if (ret)
+ 		return ERR_PTR(ret);
+@@ -304,6 +298,19 @@ const struct firmware *ath12k_core_firmware_request(struct ath12k_base *ab,
+ 	return fw;
+ }
+ 
++const struct firmware *ath12k_core_firmware_request(struct ath12k_base *ab,
++						    const char *file)
++{
++	char path[100];
++
++	if (!file)
++		return ERR_PTR(-ENOENT);
++
++	ath12k_core_create_firmware_path(ab, file, path, sizeof(path));
++
++	return ath12k_core_firmware_request_path(ab, path);
++}
++
+ void ath12k_core_free_bdf(struct ath12k_base *ab, struct ath12k_board_data *bd)
+ {
+ 	if (!IS_ERR(bd->fw))
+@@ -399,6 +406,7 @@ out:
+ 
+ static int ath12k_core_fetch_board_data_api_n(struct ath12k_base *ab,
+ 					      struct ath12k_board_data *bd,
++					      const char *filepath,
+ 					      const char *boardname,
+ 					      int ie_id_match,
+ 					      int name_id,
+@@ -406,15 +414,12 @@ static int ath12k_core_fetch_board_data_api_n(struct ath12k_base *ab,
+ {
+ 	size_t len, magic_len;
+ 	const u8 *data;
+-	char *filename, filepath[100];
+ 	size_t ie_len;
+ 	struct ath12k_fw_ie *hdr;
+ 	int ret, ie_id;
+ 
+-	filename = ATH12K_BOARD_API2_FILE;
+-
+ 	if (!bd->fw)
+-		bd->fw = ath12k_core_firmware_request(ab, filename);
++		bd->fw = ath12k_core_firmware_request_path(ab, filepath);
+ 
+ 	if (IS_ERR(bd->fw))
+ 		return PTR_ERR(bd->fw);
+@@ -422,9 +427,6 @@ static int ath12k_core_fetch_board_data_api_n(struct ath12k_base *ab,
+ 	data = bd->fw->data;
+ 	len = bd->fw->size;
+ 
+-	ath12k_core_create_firmware_path(ab, filename,
+-					 filepath, sizeof(filepath));
+-
+ 	/* magic has extra null byte padded */
+ 	magic_len = strlen(ATH12K_BOARD_MAGIC) + 1;
+ 	if (len < magic_len) {
+@@ -526,20 +528,44 @@ int ath12k_core_fetch_board_data_api_1(struct ath12k_base *ab,
+ int ath12k_core_fetch_bdf(struct ath12k_base *ab, struct ath12k_board_data *bd)
+ {
+ 	char boardname[BOARD_NAME_SIZE], fallback_boardname[BOARD_NAME_SIZE];
+-	char *filename, filepath[100];
++	char *board_path __free(kfree) = NULL;
++	char default_path[100];
++	const char *filepath = default_path;
++	const char *fw_name;
+ 	int bd_api;
+ 	int ret;
+ 
+-	filename = ATH12K_BOARD_API2_FILE;
+-
+ 	ret = ath12k_core_create_board_name(ab, boardname, sizeof(boardname));
+ 	if (ret) {
+ 		ath12k_err(ab, "failed to create board name: %d", ret);
+ 		return ret;
+ 	}
+ 
++	if (!of_property_read_string(ab->dev->of_node, "firmware-name", &fw_name) &&
++	    *fw_name) {
++		board_path = kasprintf(GFP_KERNEL, "%s/%s/%s/%s", ATH12K_FW_DIR,
++				       ab->hw_params->fw.dir, fw_name,
++				       ATH12K_BOARD_API2_FILE);
++		if (!board_path)
++			return -ENOMEM;
++
++		bd->fw = ath12k_core_firmware_request_path(ab, board_path);
++		if (PTR_ERR_OR_ZERO(bd->fw) == -ENOENT) {
++			bd->fw = NULL;
++		} else {
++			filepath = board_path;
++			if (IS_ERR(bd->fw))
++				ath12k_err(ab, "failed to load board data from %s: %pe\n",
++					   filepath, bd->fw);
++		}
++	}
++
++	if (filepath == default_path)
++		ath12k_core_create_firmware_path(ab, ATH12K_BOARD_API2_FILE,
++						 default_path, sizeof(default_path));
++
+ 	bd_api = 2;
+-	ret = ath12k_core_fetch_board_data_api_n(ab, bd, boardname,
++	ret = ath12k_core_fetch_board_data_api_n(ab, bd, filepath, boardname,
+ 						 ATH12K_BD_IE_BOARD,
+ 						 ATH12K_BD_IE_BOARD_NAME,
+ 						 ATH12K_BD_IE_BOARD_DATA);
+@@ -553,7 +579,7 @@ int ath12k_core_fetch_bdf(struct ath12k_base *ab, struct ath12k_board_data *bd)
+ 		return ret;
+ 	}
+ 
+-	ret = ath12k_core_fetch_board_data_api_n(ab, bd, fallback_boardname,
++	ret = ath12k_core_fetch_board_data_api_n(ab, bd, filepath, fallback_boardname,
+ 						 ATH12K_BD_IE_BOARD,
+ 						 ATH12K_BD_IE_BOARD_NAME,
+ 						 ATH12K_BD_IE_BOARD_DATA);
+@@ -563,8 +589,6 @@ int ath12k_core_fetch_bdf(struct ath12k_base *ab, struct ath12k_board_data *bd)
+ 	bd_api = 1;
+ 	ret = ath12k_core_fetch_board_data_api_1(ab, bd, ATH12K_DEFAULT_BOARD_FILE);
+ 	if (ret) {
+-		ath12k_core_create_firmware_path(ab, filename,
+-						 filepath, sizeof(filepath));
+ 		ath12k_err(ab, "failed to fetch board data for %s from %s\n",
+ 			   boardname, filepath);
+ 		if (memcmp(boardname, fallback_boardname, strlen(boardname)))
+@@ -584,6 +608,7 @@ success:
+ int ath12k_core_fetch_regdb(struct ath12k_base *ab, struct ath12k_board_data *bd)
+ {
+ 	char boardname[BOARD_NAME_SIZE], default_boardname[BOARD_NAME_SIZE];
++	char filepath[100];
+ 	int ret;
+ 
+ 	ret = ath12k_core_create_board_name(ab, boardname, BOARD_NAME_SIZE);
+@@ -593,7 +618,9 @@ int ath12k_core_fetch_regdb(struct ath12k_base *ab, struct ath12k_board_data *bd
+ 		goto exit;
+ 	}
+ 
+-	ret = ath12k_core_fetch_board_data_api_n(ab, bd, boardname,
++	ath12k_core_create_firmware_path(ab, ATH12K_BOARD_API2_FILE,
++					 filepath, sizeof(filepath));
++	ret = ath12k_core_fetch_board_data_api_n(ab, bd, filepath, boardname,
+ 						 ATH12K_BD_IE_REGDB,
+ 						 ATH12K_BD_IE_REGDB_NAME,
+ 						 ATH12K_BD_IE_REGDB_DATA);
+@@ -608,7 +635,7 @@ int ath12k_core_fetch_regdb(struct ath12k_base *ab, struct ath12k_board_data *bd
+ 		goto exit;
+ 	}
+ 
+-	ret = ath12k_core_fetch_board_data_api_n(ab, bd, default_boardname,
++	ret = ath12k_core_fetch_board_data_api_n(ab, bd, filepath, default_boardname,
+ 						 ATH12K_BD_IE_REGDB,
+ 						 ATH12K_BD_IE_REGDB_NAME,
+ 						 ATH12K_BD_IE_REGDB_DATA);
