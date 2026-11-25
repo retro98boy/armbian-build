@@ -1218,6 +1218,10 @@
 	status = "okay";
 };
 
+&remoteproc_soccp {
+	firmware-name = "qcom/sm8750/LENOVO/elden/soccp.mbn";
+};
+
 &spi4 {
 	status = "okay";
 

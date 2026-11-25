@@ -1,0 +1,25 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: retro98boy <retro98boy@qq.com>
+Date: Thu, 26 Nov 2026 00:54:21 +0800
+Subject: [PATCH] arm64: dts: qcom: cq8725s-ayn-odin3: select SoCCP firmware
+
+Load the SoCCP firmware from the Odin 3 firmware directory.
+---
+ arch/arm64/boot/dts/qcom/cq8725s-ayn-odin3.dts | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/qcom/cq8725s-ayn-odin3.dts b/arch/arm64/boot/dts/qcom/cq8725s-ayn-odin3.dts
+index 8692b65..02dbaf8 100644
+--- a/arch/arm64/boot/dts/qcom/cq8725s-ayn-odin3.dts
++++ b/arch/arm64/boot/dts/qcom/cq8725s-ayn-odin3.dts
+@@ -246,6 +246,10 @@
+ 	status = "okay";
+ };
+ 
++&remoteproc_soccp {
++	firmware-name = "qcom/sm8750/ayn/odin3/soccp.mbn";
++};
++
+ &spk_amp_l {
+ 	firmware-name = "qcom/sm8750/ayn/odin3/aw883xx_acf.bin";
+ };

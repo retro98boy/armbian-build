@@ -1,0 +1,25 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Armada <noreply@armada.local>
+Subject: [PATCH] media: iris: decode in stage 1 when decode order is requested
+
+Stage 2 pipelines bitstream parsing and pixel decode across frames, so
+each frame is returned later. Use stage 1 for sessions that ask for
+decode order output.
+---
+ drivers/media/platform/qcom/iris/iris_ctrls.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/media/platform/qcom/iris/iris_ctrls.c b/drivers/media/platform/qcom/iris/iris_ctrls.c
+index 990fce2..29b7fc5 100644
+--- a/drivers/media/platform/qcom/iris/iris_ctrls.c
++++ b/drivers/media/platform/qcom/iris/iris_ctrls.c
+@@ -552,7 +552,8 @@ int iris_set_stage(struct iris_inst *inst, enum platform_inst_fw_cap_type cap_id
+ 	u32 work_mode = STAGE_2;
+ 
+ 	if (inst->domain == DECODER) {
+-		if (iris_res_is_less_than(width, height, 1280, 720))
++		if (iris_res_is_less_than(width, height, 1280, 720) ||
++		    iris_dec_decode_order(inst))
+ 			work_mode = STAGE_1;
+ 	}
+ 
