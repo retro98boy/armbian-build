@@ -604,6 +604,7 @@
 		pinctrl-0 = <&dp_typec_irq>;
 		vbus-supply = <&vbus_dp>;
 		fcs,always-on-vbus;
+		extcon = <&typec_extcon>;
 		usb-role-switch = <&typec_extcon>;
 
 		connector {
