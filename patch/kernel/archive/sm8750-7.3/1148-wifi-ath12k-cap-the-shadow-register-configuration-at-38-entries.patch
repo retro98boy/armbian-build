@@ -1,0 +1,39 @@
+From 364880382bfaa6ed1c96522dd9070dfd8ebc6d94 Mon Sep 17 00:00:00 2001
+From: Teguh Sobirin <teguh@sobir.in>
+Date: Tue, 8 Sep 2026 22:37:25 +0000
+Subject: [PATCH] wifi: ath12k: cap the shadow register configuration at 38
+ entries
+
+The firmware can consume 40 shadow registers and reserves 2 of them,
+whatever the size of the message array.
+
+Signed-off-by: Teguh Sobirin <teguh@sobir.in>
+
+Backport to Armada Linux 7.2.6; retain existing WCN7860 and QDSS support.
+Source: https://github.com/RetroidPocket/linux/commit/364880382bfaa6ed1c96522dd9070dfd8ebc6d94
+---
+diff --git a/drivers/net/wireless/ath/ath12k/qmi.c b/drivers/net/wireless/ath/ath12k/qmi.c
+--- a/drivers/net/wireless/ath/ath12k/qmi.c
++++ b/drivers/net/wireless/ath/ath12k/qmi.c
+@@ -3684,7 +3684,7 @@
+ 		req->shadow_reg_v3_valid = 1;
+ 		req->shadow_reg_v3_len = min_t(u32,
+ 					       ab->qmi.ce_cfg.shadow_reg_v3_len,
+-					       QMI_WLANFW_MAX_NUM_SHADOW_REG_V3_V01);
++					       ATH12K_QMI_MAX_USABLE_SHADOW_REG_V3);
+ 		memcpy(&req->shadow_reg_v3, ab->qmi.ce_cfg.shadow_reg_v3,
+ 		       sizeof(u32) * req->shadow_reg_v3_len);
+ 	} else {
+diff --git a/drivers/net/wireless/ath/ath12k/qmi.h b/drivers/net/wireless/ath/ath12k/qmi.h
+--- a/drivers/net/wireless/ath/ath12k/qmi.h
++++ b/drivers/net/wireless/ath/ath12k/qmi.h
+@@ -590,6 +590,9 @@
+ #define QMI_WLANFW_MAX_NUM_SHADOW_REG_V01		24
+ #define QMI_WLANFW_MAX_NUM_SHADOW_REG_V3_V01		60
+ 
++/* the firmware reserves 2 of its 40 shadow registers */
++#define ATH12K_QMI_MAX_USABLE_SHADOW_REG_V3		38
++
+ struct qmi_wlanfw_wlan_mode_req_msg_v01 {
+ 	u32 mode;
+ 	u8 hw_debug_valid;

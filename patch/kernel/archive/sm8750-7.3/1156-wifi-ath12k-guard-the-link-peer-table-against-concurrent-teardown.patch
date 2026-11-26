@@ -1,0 +1,77 @@
+From 1877d7230554c26f9558b215d0349253df378f5e Mon Sep 17 00:00:00 2001
+From: Teguh Sobirin <teguh@sobir.in>
+Date: Tue, 8 Sep 2026 22:37:35 +0000
+Subject: [PATCH] wifi: ath12k: guard the link peer table against concurrent
+ teardown
+
+ath12k_dp_cleanup() destroys the peer rhashtable on a firmware crash
+while lookups reachable from userspace can still run, giving a NULL
+dereference in ath12k_dp_link_peer_find_by_addr(). Clear the pointer
+under dp_lock before the sleeping destroy, and make lookup, insert and
+remove tolerate its absence.
+
+Signed-off-by: Teguh Sobirin <teguh@sobir.in>
+
+Backport to Armada Linux 7.2.6; retain existing WCN7860 and QDSS support.
+Source: https://github.com/RetroidPocket/linux/commit/1877d7230554c26f9558b215d0349253df378f5e
+---
+diff --git a/drivers/net/wireless/ath/ath12k/dp_peer.c b/drivers/net/wireless/ath/ath12k/dp_peer.c
+--- a/drivers/net/wireless/ath/ath12k/dp_peer.c
++++ b/drivers/net/wireless/ath/ath12k/dp_peer.c
+@@ -61,6 +61,10 @@
+ ath12k_dp_link_peer_find_by_addr(struct ath12k_dp *dp, const u8 *addr)
+ {
+ 	lockdep_assert_held(&dp->dp_lock);
++
++	/* torn down by ath12k_dp_cleanup() on a crash */
++	if (!dp->rhead_peer_addr)
++		return NULL;
+ 
+ 	return rhashtable_lookup_fast(dp->rhead_peer_addr, addr,
+ 				      dp->rhash_peer_addr_param);
+@@ -274,14 +278,21 @@
+ 
+ void ath12k_dp_link_peer_rhash_tbl_destroy(struct ath12k_dp *dp)
+ {
++	struct rhashtable *tbl;
++
+ 	guard(mutex)(&dp->link_peer_rhash_tbl_lock);
+ 
+-	if (!dp->rhead_peer_addr)
++	/* clear under dp_lock; rhashtable_destroy() sleeps */
++	scoped_guard(spinlock_bh, &dp->dp_lock) {
++		tbl = dp->rhead_peer_addr;
++		dp->rhead_peer_addr = NULL;
++	}
++
++	if (!tbl)
+ 		return;
+ 
+-	rhashtable_destroy(dp->rhead_peer_addr);
+-	kfree(dp->rhead_peer_addr);
+-	dp->rhead_peer_addr = NULL;
++	rhashtable_destroy(tbl);
++	kfree(tbl);
+ }
+ 
+ static int ath12k_dp_link_peer_rhash_insert(struct ath12k_dp *dp,
+@@ -290,6 +301,9 @@
+ 	struct ath12k_dp_link_peer *tmp;
+ 
+ 	lockdep_assert_held(&dp->dp_lock);
++
++	if (!dp->rhead_peer_addr)
++		return -ENOENT;
+ 
+ 	tmp = rhashtable_lookup_get_insert_fast(dp->rhead_peer_addr, &peer->rhash_addr,
+ 						dp->rhash_peer_addr_param);
+@@ -307,6 +321,9 @@
+ 	int ret;
+ 
+ 	lockdep_assert_held(&dp->dp_lock);
++
++	if (!dp->rhead_peer_addr)
++		return 0;
+ 
+ 	ret = rhashtable_remove_fast(dp->rhead_peer_addr, &peer->rhash_addr,
+ 				     dp->rhash_peer_addr_param);
