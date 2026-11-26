@@ -1,0 +1,37 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: retro98boy <retro98boy@qq.com>
+Date: Thu, 26 Nov 2026 17:43:04 +0800
+Subject: [PATCH] ASoC: qcom: q6apm: start DisplayPort graphs at trigger
+
+The early playback start added for the Odin 3 I2S amplifier also
+applies to DisplayPort. The CPU DAI then starts the graph before
+the codec DAI prepares the DisplayPort audio engine. The DSP rejects
+the start.
+
+Leave DisplayPort graph startup to the PCM trigger. This restores
+the ordering from b54a38af7138 ("ASoC: qcom: q6apm-lpass-dai: move
+graph start to trigger").
+
+Signed-off-by: retro98boy <retro98boy@qq.com>
+---
+ sound/soc/qcom/qdsp6/q6apm-lpass-dais.c | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/sound/soc/qcom/qdsp6/q6apm-lpass-dais.c b/sound/soc/qcom/qdsp6/q6apm-lpass-dais.c
+index 56a6b8ded782..8a5afd7e38fc 100644
+--- a/sound/soc/qcom/qdsp6/q6apm-lpass-dais.c
++++ b/sound/soc/qcom/qdsp6/q6apm-lpass-dais.c
+@@ -266,6 +266,13 @@ static int q6apm_lpass_dai_prepare(struct snd_pcm_substream *substream, struct s
+ 		goto err;
+ 	}
+ 
++	/* Start at trigger after the codec prepares the DisplayPort audio engine. */
++	switch (dai->id) {
++	case DISPLAY_PORT_RX_0:
++	case DISPLAY_PORT_RX_1 ... DISPLAY_PORT_RX_7:
++		return 0;
++	}
++
+ 	/*
+ 	 * aw88166 checks its PLL against BCLK at DAPM PRE_PMU, before the
+ 	 * PCM trigger; start the port here so BCLK is up in time. The

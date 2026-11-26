@@ -327,6 +327,22 @@
 				"TX SWR_INPUT2", "ADC3_OUTPUT",
 				"TX SWR_INPUT3", "ADC4_OUTPUT";
 
+		dp-dai-link {
+			link-name = "DisplayPort Playback";
+
+			cpu {
+				sound-dai = <&q6apmbedai DISPLAY_PORT_RX_0>;
+			};
+
+			codec {
+				sound-dai = <&mdss_dp0>;
+			};
+
+			platform {
+				sound-dai = <&q6apm>;
+			};
+		};
+
 		mi2s-dai-link {
 			link-name = "Secondary MI2S";
 
