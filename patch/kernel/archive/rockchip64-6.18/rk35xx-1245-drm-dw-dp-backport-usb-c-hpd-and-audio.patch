@@ -1,0 +1,1044 @@
+From: Armbian
+Subject: drm: backport Synopsys USB-C DP hotplug and audio
+
+Backport the AUX, HPD and audio changes from the Synopsys DP v12 series.
+Accept HPD from the USB-C connector's DisplayPort reference.
+Replay HPD events that arrive before DRM registers the connector.
+Enable DP audio when the controller declares the audio DAI argument.
+
+Link: https://patch.msgid.link/20261114-synopsys-dw-dp-improvements-v12-0-d42d3dc5bdd4@collabora.com
+Link: https://patch.msgid.link/20260821-drm-connector-oob-hotplug-cache-v1-1-e92e146fdc7b@collabora.com
+---
+diff --git a/Documentation/devicetree/bindings/connector/usb-connector.yaml b/Documentation/devicetree/bindings/connector/usb-connector.yaml
+index d97b29e..0f91cbe 100644
+--- a/Documentation/devicetree/bindings/connector/usb-connector.yaml
++++ b/Documentation/devicetree/bindings/connector/usb-connector.yaml
+@@ -153,6 +153,10 @@ properties:
+       is only necessary if there are no other means to discover supported
+       alternative modes (e.g. through the UCSI firmware interface).
+ 
++  displayport:
++    $ref: /schemas/types.yaml#/definitions/phandle
++    description: DisplayPort output that receives this connector's HPD events.
++
+   altmodes:
+     type: object
+     description: List of Alternative Modes supported by the schematics on the
+diff --git a/Documentation/devicetree/bindings/display/rockchip/rockchip,dw-dp.yaml b/Documentation/devicetree/bindings/display/rockchip/rockchip,dw-dp.yaml
+index a8a0087..888dee6 100644
+--- a/Documentation/devicetree/bindings/display/rockchip/rockchip,dw-dp.yaml
++++ b/Documentation/devicetree/bindings/display/rockchip/rockchip,dw-dp.yaml
+@@ -83,7 +83,8 @@ properties:
+     maxItems: 1
+ 
+   "#sound-dai-cells":
+-    const: 0
++    enum: [0, 1]
++    description: With one argument, use 0 for I2S or 1 for S/PDIF.
+ 
+ required:
+   - compatible
+diff --git a/drivers/gpu/drm/bridge/synopsys/dw-dp.c b/drivers/gpu/drm/bridge/synopsys/dw-dp.c
+index 901bdec..6709c70 100644
+--- a/drivers/gpu/drm/bridge/synopsys/dw-dp.c
++++ b/drivers/gpu/drm/bridge/synopsys/dw-dp.c
+@@ -23,17 +23,21 @@
+ #include <drm/drm_bridge.h>
+ #include <drm/drm_bridge_connector.h>
+ #include <drm/display/drm_dp_helper.h>
++#include <drm/display/drm_hdmi_audio_helper.h>
+ #include <drm/drm_edid.h>
+ #include <drm/drm_of.h>
+ #include <drm/drm_print.h>
+ #include <drm/drm_probe_helper.h>
+ #include <drm/drm_simple_kms_helper.h>
+ 
++#include <sound/hdmi-codec.h>
++
+ #define DW_DP_VERSION_NUMBER			0x0000
+ #define DW_DP_VERSION_TYPE			0x0004
+ #define DW_DP_ID				0x0008
+ 
+ #define DW_DP_CONFIG_REG1			0x0100
++#define AUDIO_SELECT				GENMASK(2, 1)
+ #define DW_DP_CONFIG_REG2			0x0104
+ #define DW_DP_CONFIG_REG3			0x0108
+ 
+@@ -110,6 +114,10 @@
+ #define HBR_MODE_ENABLE				BIT(10)
+ #define AUDIO_DATA_WIDTH			GENMASK(9, 5)
+ #define AUDIO_DATA_IN_EN			GENMASK(4, 1)
++#define AUDIO_DATA_IN_EN_CHANNEL12		BIT(0)
++#define AUDIO_DATA_IN_EN_CHANNEL34		BIT(1)
++#define AUDIO_DATA_IN_EN_CHANNEL56		BIT(2)
++#define AUDIO_DATA_IN_EN_CHANNEL78		BIT(3)
+ #define AUDIO_INF_SELECT			BIT(0)
+ 
+ #define DW_DP_SDP_VERTICAL_CTRL			0x0500
+@@ -253,6 +261,8 @@
+ 
+ #define SDP_REG_BANK_SIZE			16
+ 
++#define DW_DP_SDP_VERSION			0x12
++
+ struct dw_dp_link_caps {
+ 	bool enhanced_framing;
+ 	bool tps3_supported;
+@@ -280,6 +290,7 @@ struct dw_dp_link {
+ 	unsigned char revision;
+ 	unsigned int rate;
+ 	unsigned int lanes;
++	bool enabled;
+ 	u8 sink_count;
+ 	u8 vsc_sdp_supported;
+ 	struct dw_dp_link_caps caps;
+@@ -305,6 +316,19 @@ struct dw_dp_hotplug {
+ 	bool long_hpd;
+ };
+ 
++enum dw_dp_audio_interface_support {
++	DW_DP_AUDIO_I2S_ONLY = 0,
++	DW_DP_AUDIO_SPDIF_ONLY = 1,
++	DW_DP_AUDIO_I2S_AND_SPDIF = 2,
++	DW_DP_AUDIO_NONE = 3,
++};
++
++enum dw_dp_audio_interface {
++	DW_DP_AUDIO_I2S = 0,
++	DW_DP_AUDIO_SPDIF = 1,
++	DW_DP_AUDIO_UNUSED,
++};
++
+ struct dw_dp {
+ 	struct drm_bridge bridge;
+ 	struct device *dev;
+@@ -320,8 +344,18 @@ struct dw_dp {
+ 	int irq;
+ 	struct work_struct hpd_work;
+ 	struct dw_dp_hotplug hotplug;
++	enum dw_dp_audio_interface audio_interface;
++	int audio_channels;
++	int audio_channel_allocation;
++	int audio_sample_width;
++	bool audio_muted;
++	int audio_sdp_nr;
+ 	/* Serialize hpd status access */
+ 	struct mutex irq_lock;
++	/* Serialize sdp_reg_bank access */
++	struct mutex sdp_lock;
++	/* Serialize audio state */
++	struct mutex audio_lock;
+ 
+ 	struct drm_dp_aux aux;
+ 
+@@ -329,6 +363,7 @@ struct dw_dp {
+ 	struct dw_dp_plat_data plat_data;
+ 	u8 pixel_mode;
+ 
++	int vsc_sdp_nr;
+ 	DECLARE_BITMAP(sdp_reg_bank, SDP_REG_BANK_SIZE);
+ };
+ 
+@@ -1042,11 +1077,13 @@ static int dw_dp_send_sdp(struct dw_dp *dp, struct dw_dp_sdp *sdp)
+ 	u32 reg;
+ 	int i, nr;
+ 
+-	nr = find_first_zero_bit(dp->sdp_reg_bank, SDP_REG_BANK_SIZE);
+-	if (nr < SDP_REG_BANK_SIZE)
+-		set_bit(nr, dp->sdp_reg_bank);
+-	else
+-		return -EBUSY;
++	scoped_guard(mutex, &dp->sdp_lock) {
++		nr = find_first_zero_bit(dp->sdp_reg_bank, SDP_REG_BANK_SIZE);
++		if (nr < SDP_REG_BANK_SIZE)
++			set_bit(nr, dp->sdp_reg_bank);
++		else
++			return -EBUSY;
++	}
+ 
+ 	reg = DW_DP_SDP_REGISTER_BANK + nr * 9 * 4;
+ 
+@@ -1059,16 +1096,26 @@ static int dw_dp_send_sdp(struct dw_dp *dp, struct dw_dp_sdp *sdp)
+ 			     FIELD_PREP(SDP_REGS, get_unaligned_le32(payload)));
+ 
+ 	if (sdp->flags & DW_DP_SDP_VERTICAL_INTERVAL)
+-		regmap_update_bits(dp->regmap, DW_DP_SDP_VERTICAL_CTRL,
+-				   EN_VERTICAL_SDP << nr,
+-				   EN_VERTICAL_SDP << nr);
++		regmap_set_bits(dp->regmap, DW_DP_SDP_VERTICAL_CTRL,
++				EN_VERTICAL_SDP << nr);
+ 
+ 	if (sdp->flags & DW_DP_SDP_HORIZONTAL_INTERVAL)
+-		regmap_update_bits(dp->regmap, DW_DP_SDP_HORIZONTAL_CTRL,
+-				   EN_HORIZONTAL_SDP << nr,
+-				   EN_HORIZONTAL_SDP << nr);
++		regmap_set_bits(dp->regmap, DW_DP_SDP_HORIZONTAL_CTRL,
++				EN_HORIZONTAL_SDP << nr);
+ 
+-	return 0;
++	return nr;
++}
++
++static void dw_dp_clear_sdp(struct dw_dp *dp, int nr)
++{
++	regmap_clear_bits(dp->regmap, DW_DP_SDP_VERTICAL_CTRL,
++			  EN_VERTICAL_SDP << nr);
++
++	regmap_clear_bits(dp->regmap, DW_DP_SDP_HORIZONTAL_CTRL,
++			  EN_HORIZONTAL_SDP << nr);
++
++	scoped_guard(mutex, &dp->sdp_lock)
++		clear_bit(nr, dp->sdp_reg_bank);
+ }
+ 
+ static int dw_dp_send_vsc_sdp(struct dw_dp *dp)
+@@ -1385,7 +1432,7 @@ static int dw_dp_video_enable(struct dw_dp *dp)
+ 			   FIELD_PREP(VIDEO_STREAM_ENABLE, 1));
+ 
+ 	if (dw_dp_video_need_vsc_sdp(dp))
+-		dw_dp_send_vsc_sdp(dp);
++		dp->vsc_sdp_nr = dw_dp_send_vsc_sdp(dp);
+ 
+ 	return 0;
+ }
+@@ -1464,6 +1511,8 @@ static ssize_t dw_dp_aux_transfer(struct drm_dp_aux *aux,
+ 	if (WARN_ON(msg->size > 16))
+ 		return -E2BIG;
+ 
++	reinit_completion(&dp->complete);
++
+ 	switch (msg->request & ~DP_AUX_I2C_MOT) {
+ 	case DP_AUX_NATIVE_WRITE:
+ 	case DP_AUX_I2C_WRITE:
+@@ -1490,6 +1539,12 @@ static ssize_t dw_dp_aux_transfer(struct drm_dp_aux *aux,
+ 	status = wait_for_completion_timeout(&dp->complete, timeout);
+ 	if (!status) {
+ 		dev_err(dp->dev, "timeout waiting for AUX reply\n");
++		regmap_update_bits(dp->regmap, DW_DP_SOFT_RESET_CTRL,
++				   AUX_RESET, FIELD_PREP(AUX_RESET, 1));
++		usleep_range(10, 20);
++		regmap_update_bits(dp->regmap, DW_DP_SOFT_RESET_CTRL,
++				   AUX_RESET, FIELD_PREP(AUX_RESET, 0));
++		synchronize_irq(dp->irq);
+ 		return -ETIMEDOUT;
+ 	}
+ 
+@@ -1503,7 +1558,7 @@ static ssize_t dw_dp_aux_transfer(struct drm_dp_aux *aux,
+ 		if (msg->request & DP_AUX_I2C_READ) {
+ 			size_t count = FIELD_GET(AUX_BYTES_READ, value) - 1;
+ 
+-			if (count != msg->size)
++			if (!count || count > msg->size)
+ 				return -EBUSY;
+ 
+ 			ret = dw_dp_aux_read_data(dp, msg->buffer, count);
+@@ -1614,6 +1669,9 @@ static void dw_dp_link_disable(struct dw_dp *dp)
+ {
+ 	struct dw_dp_link *link = &dp->link;
+ 
++	if (!link->enabled)
++		return;
++
+ 	if (dw_dp_hpd_detect(dp))
+ 		drm_dp_link_power_down(&dp->aux, dp->link.revision);
+ 
+@@ -1623,6 +1681,7 @@ static void dw_dp_link_disable(struct dw_dp *dp)
+ 
+ 	link->train.clock_recovered = false;
+ 	link->train.channel_equalized = false;
++	link->enabled = false;
+ }
+ 
+ static int dw_dp_link_enable(struct dw_dp *dp)
+@@ -1635,13 +1694,270 @@ static int dw_dp_link_enable(struct dw_dp *dp)
+ 
+ 	ret = drm_dp_link_power_up(&dp->aux, dp->link.revision);
+ 	if (ret < 0)
+-		return ret;
++		goto err_phy_power_off;
+ 
+ 	ret = dw_dp_link_train(dp);
++	if (ret < 0)
++		goto err_link_power_down;
++
++	dp->link.enabled = true;
+ 
++	return 0;
++
++err_link_power_down:
++	if (dw_dp_hpd_detect(dp))
++		drm_dp_link_power_down(&dp->aux, dp->link.revision);
++	dw_dp_phy_xmit_enable(dp, 0);
++
++err_phy_power_off:
++	phy_power_off(dp->phy);
+ 	return ret;
+ }
+ 
++static int dw_dp_audio_infoframe_send(struct dw_dp *dp)
++{
++	struct hdmi_audio_infoframe frame;
++	struct dw_dp_sdp sdp;
++	int ret;
++
++	ret = hdmi_audio_infoframe_init(&frame);
++	if (ret < 0)
++		return ret;
++
++	frame.coding_type = HDMI_AUDIO_CODING_TYPE_STREAM;
++	frame.sample_frequency = HDMI_AUDIO_SAMPLE_FREQUENCY_STREAM;
++	frame.sample_size = HDMI_AUDIO_SAMPLE_SIZE_STREAM;
++	frame.channels = dp->audio_channels;
++	frame.channel_allocation = dp->audio_channel_allocation;
++
++	ret = hdmi_audio_infoframe_pack_for_dp(&frame, &sdp.base, DW_DP_SDP_VERSION);
++	if (ret < 0)
++		return ret;
++
++	sdp.flags = DW_DP_SDP_VERTICAL_INTERVAL;
++
++	return dw_dp_send_sdp(dp, &sdp);
++}
++
++static void dw_dp_audio_infoframe_clear(struct dw_dp *dp)
++{
++	if (dp->audio_sdp_nr >= 0) {
++		dw_dp_clear_sdp(dp, dp->audio_sdp_nr);
++		dp->audio_sdp_nr = -1;
++	}
++
++	regmap_clear_bits(dp->regmap, DW_DP_SDP_VERTICAL_CTRL,
++			  EN_AUDIO_STREAM_SDP | EN_AUDIO_TIMESTAMP_SDP);
++	regmap_clear_bits(dp->regmap, DW_DP_SDP_HORIZONTAL_CTRL,
++			  EN_AUDIO_STREAM_SDP);
++
++	regmap_clear_bits(dp->regmap, DW_DP_AUD_CONFIG1, AUDIO_DATA_IN_EN);
++}
++
++static void __dw_dp_audio_disable(struct dw_dp *dp)
++{
++	dw_dp_audio_infoframe_clear(dp);
++
++	if (dp->audio_interface == DW_DP_AUDIO_SPDIF)
++		clk_disable_unprepare(dp->spdif_clk);
++	else if (dp->audio_interface == DW_DP_AUDIO_I2S)
++		clk_disable_unprepare(dp->i2s_clk);
++
++	dp->audio_interface = DW_DP_AUDIO_UNUSED;
++}
++
++static int __dw_dp_audio_enable(struct dw_dp *dp)
++{
++	u8 audio_data_in_en;
++
++	switch (dp->audio_channels) {
++	case 1:
++	case 2:
++		audio_data_in_en = AUDIO_DATA_IN_EN_CHANNEL12;
++		break;
++	case 8:
++		audio_data_in_en = AUDIO_DATA_IN_EN_CHANNEL12 |
++				   AUDIO_DATA_IN_EN_CHANNEL34 |
++				   AUDIO_DATA_IN_EN_CHANNEL56 |
++				   AUDIO_DATA_IN_EN_CHANNEL78;
++		break;
++	default:
++		return -EINVAL;
++	}
++
++	regmap_update_bits(dp->regmap, DW_DP_AUD_CONFIG1,
++			   AUDIO_DATA_IN_EN | NUM_CHANNELS | AUDIO_DATA_WIDTH |
++			   AUDIO_INF_SELECT | HBR_MODE_ENABLE | AUDIO_MUTE,
++			   FIELD_PREP(AUDIO_DATA_IN_EN, audio_data_in_en) |
++			   FIELD_PREP(NUM_CHANNELS, dp->audio_channels - 1) |
++			   FIELD_PREP(AUDIO_DATA_WIDTH, dp->audio_sample_width) |
++			   FIELD_PREP(AUDIO_INF_SELECT, dp->audio_interface) |
++			   FIELD_PREP(HBR_MODE_ENABLE, 0) |
++			   FIELD_PREP(AUDIO_MUTE, dp->audio_muted));
++
++	/* Wait for inf switch */
++	usleep_range(20, 40);
++
++	/*
++	 * Send audio stream during vertical and horizontal blanking periods.
++	 * Send out audio timestamp SDP once per video frame during the vertical
++	 * blanking period
++	 */
++	regmap_update_bits(dp->regmap, DW_DP_SDP_VERTICAL_CTRL,
++			   EN_AUDIO_STREAM_SDP | EN_AUDIO_TIMESTAMP_SDP,
++			   FIELD_PREP(EN_AUDIO_STREAM_SDP, 1) |
++			   FIELD_PREP(EN_AUDIO_TIMESTAMP_SDP, 1));
++	regmap_update_bits(dp->regmap, DW_DP_SDP_HORIZONTAL_CTRL,
++			   EN_AUDIO_STREAM_SDP,
++			   FIELD_PREP(EN_AUDIO_STREAM_SDP, 1));
++
++	if (dp->audio_sdp_nr >= 0) {
++		dw_dp_clear_sdp(dp, dp->audio_sdp_nr);
++		dp->audio_sdp_nr = -1;
++	}
++
++	dp->audio_sdp_nr = dw_dp_audio_infoframe_send(dp);
++	if (dp->audio_sdp_nr < 0) {
++		dw_dp_audio_infoframe_clear(dp);
++		return dp->audio_sdp_nr;
++	}
++
++	return 0;
++}
++
++static void dw_dp_audio_unprepare(struct drm_bridge *bridge,
++				  struct drm_connector *connector)
++{
++	struct dw_dp *dp = bridge_to_dp(bridge);
++
++	guard(mutex)(&dp->audio_lock);
++
++	__dw_dp_audio_disable(dp);
++}
++
++static int dw_dp_audio_prepare(struct drm_bridge *bridge,
++			       struct drm_connector *connector,
++			       struct hdmi_codec_daifmt *daifmt,
++			       struct hdmi_codec_params *params)
++{
++	struct dw_dp *dp = bridge_to_dp(bridge);
++	u8 supported_audio_interfaces;
++	enum dw_dp_audio_interface audio_interface;
++	u32 cfg1;
++	int ret;
++
++	guard(mutex)(&dp->audio_lock);
++
++	/*
++	 * prepare might be called multiple times, so release the clocks
++	 * from previous calls to keep the calls in balance.
++	 */
++	if (dp->audio_interface != DW_DP_AUDIO_UNUSED)
++		__dw_dp_audio_disable(dp);
++
++	/* The hardware is limited to 1,2 or 8 channels */
++	switch (params->cea.channels) {
++	case 1:
++	case 2:
++	case 8:
++		break;
++	default:
++		dev_err(dp->dev, "invalid audio channels %d\n", params->cea.channels);
++		return -EINVAL;
++	}
++
++	if (params->sample_width < 16 || params->sample_width > 24) {
++		dev_err(dp->dev, "invalid data sample width %d\n", params->sample_width);
++		return -EINVAL;
++	}
++
++	switch (daifmt->fmt) {
++	case HDMI_SPDIF:
++		audio_interface = DW_DP_AUDIO_SPDIF;
++		break;
++	case HDMI_I2S:
++		/*
++		 * It is recommended to use SPDIF instead of I2S, since I2S mode requires
++		 * manually inserting PCUV control bits from userspace and this is done
++		 * automatically in hardware for SPDIF mode.
++		 */
++		audio_interface = DW_DP_AUDIO_I2S;
++		break;
++	default:
++		dev_err(dp->dev, "invalid DAI format %d\n", daifmt->fmt);
++		return -EINVAL;
++	}
++
++	regmap_read(dp->regmap, DW_DP_CONFIG_REG1, &cfg1);
++	supported_audio_interfaces = FIELD_GET(AUDIO_SELECT, cfg1);
++
++	if (supported_audio_interfaces != DW_DP_AUDIO_I2S_AND_SPDIF &&
++	    supported_audio_interfaces != audio_interface) {
++		dev_err(dp->dev, "unsupported DAI %d\n", daifmt->fmt);
++		return -EINVAL;
++	}
++
++	ret = clk_prepare_enable(dp->spdif_clk);
++	if (ret)
++		return ret;
++
++	ret = clk_prepare_enable(dp->i2s_clk);
++	if (ret) {
++		clk_disable_unprepare(dp->spdif_clk);
++		return ret;
++	}
++
++	if (audio_interface == DW_DP_AUDIO_I2S)
++		clk_disable_unprepare(dp->spdif_clk);
++	else if (audio_interface == DW_DP_AUDIO_SPDIF)
++		clk_disable_unprepare(dp->i2s_clk);
++
++	dp->audio_channels = params->cea.channels;
++	dp->audio_channel_allocation = params->cea.channel_allocation;
++	dp->audio_sample_width = params->sample_width;
++	dp->audio_interface = audio_interface;
++
++	ret = __dw_dp_audio_enable(dp);
++	if (ret < 0) {
++		dev_err(dp->dev, "failed to enable audio\n");
++		__dw_dp_audio_disable(dp);
++		return ret;
++	}
++
++	dev_dbg(dp->dev, "audio prepare with %d channels using DAI=%d\n",
++		dp->audio_channels, dp->audio_interface);
++
++	return 0;
++}
++
++static void dw_dp_audio_shutdown(struct drm_bridge *bridge,
++				 struct drm_connector *connector)
++{
++	struct dw_dp *dp = bridge_to_dp(bridge);
++
++	dev_dbg(dp->dev, "audio shutdown\n");
++
++	dw_dp_audio_unprepare(bridge, connector);
++}
++
++static int dw_dp_audio_mute_stream(struct drm_bridge *bridge,
++				   struct drm_connector *connector,
++				   bool enable, int direction)
++{
++	struct dw_dp *dp = bridge_to_dp(bridge);
++
++	dev_dbg(dp->dev, "audio %smute\n", enable ? "" : "un");
++
++	guard(mutex)(&dp->audio_lock);
++
++	dp->audio_muted = enable;
++
++	regmap_update_bits(dp->regmap, DW_DP_AUD_CONFIG1, AUDIO_MUTE,
++			   FIELD_PREP(AUDIO_MUTE, enable));
++
++	return 0;
++}
++
+ static void dw_dp_bridge_atomic_enable(struct drm_bridge *bridge,
+ 				       struct drm_atomic_state *state)
+ {
+@@ -1662,8 +1978,6 @@ static void dw_dp_bridge_atomic_enable(struct drm_bridge *bridge,
+ 		return;
+ 	}
+ 
+-	set_bit(0, dp->sdp_reg_bank);
+-
+ 	ret = dw_dp_link_enable(dp);
+ 	if (ret < 0) {
+ 		dev_err(dp->dev, "failed to enable link: %d\n", ret);
+@@ -1675,12 +1989,22 @@ static void dw_dp_bridge_atomic_enable(struct drm_bridge *bridge,
+ 		dev_err(dp->dev, "failed to enable video: %d\n", ret);
+ 		return;
+ 	}
++
++	scoped_guard(mutex, &dp->audio_lock) {
++		if (dp->audio_interface != DW_DP_AUDIO_UNUSED) {
++			ret = __dw_dp_audio_enable(dp);
++			if (ret < 0)
++				dev_err(dp->dev, "failed to restore audio: %d\n", ret);
++		}
++	}
+ }
+ 
+ static void dw_dp_reset(struct dw_dp *dp)
+ {
+ 	int val;
+ 
++	guard(mutex)(&dp->audio_lock);
++
+ 	disable_irq(dp->irq);
+ 	regmap_update_bits(dp->regmap, DW_DP_SOFT_RESET_CTRL, CONTROLLER_RESET,
+ 			   FIELD_PREP(CONTROLLER_RESET, 1));
+@@ -1702,7 +2026,12 @@ static void dw_dp_bridge_atomic_disable(struct drm_bridge *bridge,
+ 
+ 	dw_dp_video_disable(dp);
+ 	dw_dp_link_disable(dp);
+-	bitmap_zero(dp->sdp_reg_bank, SDP_REG_BANK_SIZE);
++
++	if (dp->vsc_sdp_nr >= 0) {
++		dw_dp_clear_sdp(dp, dp->vsc_sdp_nr);
++		dp->vsc_sdp_nr = -1;
++	}
++
+ 	dw_dp_reset(dp);
+ }
+ 
+@@ -1794,6 +2123,11 @@ static u32 *dw_dp_bridge_atomic_get_output_bus_fmts(struct drm_bridge *bridge,
+ 		output_fmts[j++] = fmt->bus_format;
+ 	}
+ 
++	if (j == 0) {
++		kfree(output_fmts);
++		output_fmts = NULL;
++	}
++
+ 	*num_output_fmts = j;
+ 
+ 	return output_fmts;
+@@ -1812,6 +2146,17 @@ static struct drm_bridge_state *dw_dp_bridge_atomic_duplicate_state(struct drm_b
+ 	return &state->base;
+ }
+ 
++static void dw_dp_bridge_oob_notify(struct drm_bridge *bridge,
++				    struct drm_connector *connector,
++				    enum drm_connector_status status)
++{
++	struct dw_dp *dp = bridge_to_dp(bridge);
++
++	if (dp->plat_data.set_hpd)
++		dp->plat_data.set_hpd(dp->plat_data.data,
++				      status == connector_status_connected);
++}
++
+ static const struct drm_bridge_funcs dw_dp_bridge_funcs = {
+ 	.atomic_duplicate_state = dw_dp_bridge_atomic_duplicate_state,
+ 	.atomic_destroy_state = drm_atomic_helper_bridge_destroy_state,
+@@ -1824,6 +2169,10 @@ static const struct drm_bridge_funcs dw_dp_bridge_funcs = {
+ 	.atomic_disable = dw_dp_bridge_atomic_disable,
+ 	.detect = dw_dp_bridge_detect,
+ 	.edid_read = dw_dp_bridge_edid_read,
++	.oob_notify = dw_dp_bridge_oob_notify,
++	.dp_audio_prepare = dw_dp_audio_prepare,
++	.dp_audio_shutdown = dw_dp_audio_shutdown,
++	.dp_audio_mute_stream = dw_dp_audio_mute_stream,
+ };
+ 
+ static int dw_dp_link_retrain(struct dw_dp *dp)
+@@ -1966,6 +2315,7 @@ struct dw_dp *dw_dp_bind(struct device *dev, struct drm_encoder *encoder,
+ 	struct platform_device *pdev = to_platform_device(dev);
+ 	struct dw_dp *dp;
+ 	struct drm_bridge *bridge;
++	u32 sound_cells;
+ 	void __iomem *res;
+ 	int ret;
+ 
+@@ -1980,9 +2330,22 @@ struct dw_dp *dw_dp_bind(struct device *dev, struct drm_encoder *encoder,
+ 	dp->dev = dev;
+ 	dp->pixel_mode = plat_data->pixel_mode;
+ 
+-	dp->plat_data.max_link_rate = plat_data->max_link_rate;
++	dp->plat_data = *plat_data;
++	dp->vsc_sdp_nr = -1;
++	dp->audio_interface = DW_DP_AUDIO_UNUSED;
++	dp->audio_sdp_nr = -1;
+ 	bridge = &dp->bridge;
+-	mutex_init(&dp->irq_lock);
++	ret = devm_mutex_init(dev, &dp->irq_lock);
++	if (ret)
++		return ERR_PTR(ret);
++
++	ret = devm_mutex_init(dev, &dp->sdp_lock);
++	if (ret)
++		return ERR_PTR(ret);
++
++	ret = devm_mutex_init(dev, &dp->audio_lock);
++	if (ret)
++		return ERR_PTR(ret);
+ 	INIT_WORK(&dp->hpd_work, dw_dp_hpd_work);
+ 	init_completion(&dp->complete);
+ 
+@@ -2039,9 +2402,19 @@ struct dw_dp *dw_dp_bind(struct device *dev, struct drm_encoder *encoder,
+ 	}
+ 
+ 	bridge->of_node = dev->of_node;
+-	bridge->ops = DRM_BRIDGE_OP_DETECT | DRM_BRIDGE_OP_EDID | DRM_BRIDGE_OP_HPD;
++	bridge->ops = DRM_BRIDGE_OP_DETECT | DRM_BRIDGE_OP_EDID |
++		      DRM_BRIDGE_OP_HPD;
+ 	bridge->type = DRM_MODE_CONNECTOR_DisplayPort;
+ 	bridge->ycbcr_420_allowed = true;
++	if (!of_property_read_u32(dev->of_node, "#sound-dai-cells",
++				  &sound_cells) && sound_cells == 1) {
++		bridge->ops |= DRM_BRIDGE_OP_DP_AUDIO;
++		bridge->hdmi_audio_dev = dev;
++		bridge->hdmi_audio_max_i2s_playback_channels = 8;
++		bridge->hdmi_audio_dai_port = 1;
++		bridge->hdmi_audio_spdif_playback = true;
++	}
++
+ 
+ 	dp->aux.dev = dev;
+ 	dp->aux.drm_dev = encoder->dev;
+diff --git a/drivers/gpu/drm/display/drm_bridge_connector.c b/drivers/gpu/drm/display/drm_bridge_connector.c
+index bc339f5..8fa30ca 100644
+--- a/drivers/gpu/drm/display/drm_bridge_connector.c
++++ b/drivers/gpu/drm/display/drm_bridge_connector.c
+@@ -172,6 +172,13 @@ static void drm_bridge_connector_oob_hotplug_event(struct drm_connector *connect
+ {
+ 	struct drm_bridge_connector *bridge_connector =
+ 		to_drm_bridge_connector(connector);
++	struct drm_bridge *bridge;
++
++	/* Notify all bridges in the pipeline of hotplug events. */
++	drm_for_each_bridge_in_chain(bridge_connector->encoder, bridge) {
++		if (bridge->funcs->oob_notify)
++			bridge->funcs->oob_notify(bridge, connector, status);
++	}
+ 
+ 	drm_bridge_connector_handle_hpd(bridge_connector, status);
+ }
+diff --git a/drivers/gpu/drm/drm_connector.c b/drivers/gpu/drm/drm_connector.c
+index 0326b9a..6ad0fbe 100644
+--- a/drivers/gpu/drm/drm_connector.c
++++ b/drivers/gpu/drm/drm_connector.c
+@@ -33,6 +33,7 @@
+ #include <drm/drm_sysfs.h>
+ #include <drm/drm_utils.h>
+ 
++#include <linux/cleanup.h>
+ #include <linux/export.h>
+ #include <linux/platform_device.h>
+ #include <linux/property.h>
+@@ -81,6 +82,22 @@
+ static DEFINE_MUTEX(connector_list_lock);
+ static LIST_HEAD(connector_list);
+ 
++/*
++ * List of connector fwnodes with their last out-of-band hotplug status
++ * required to forward them to a connector on registration. This ensures
++ * the connector sees a HPD event, if the event arrived before the DRM
++ * driver was probed (either due to module reload, or because of bad
++ * timing during bootup).
++ */
++struct drm_oob_hotplug_state {
++	struct list_head head;
++	struct fwnode_handle *fwnode;
++	enum drm_connector_status status;
++};
++
++static DEFINE_MUTEX(oob_hotplug_list_lock);
++static LIST_HEAD(oob_hotplug_list);
++
+ struct drm_conn_prop_enum_list {
+ 	int type;
+ 	const char *name;
+@@ -130,6 +147,19 @@ void drm_connector_ida_destroy(void)
+ 		ida_destroy(&drm_connector_enum_list[i].ida);
+ }
+ 
++void drm_connector_oob_hotplug_cleanup(void)
++{
++	struct drm_oob_hotplug_state *e, *tmp;
++
++	scoped_guard(mutex, &oob_hotplug_list_lock) {
++		list_for_each_entry_safe(e, tmp, &oob_hotplug_list, head) {
++			list_del(&e->head);
++			fwnode_handle_put(e->fwnode);
++			kfree(e);
++		}
++	}
++}
++
+ /**
+  * drm_get_connector_type_name - return a string for connector type
+  * @type: The connector type (DRM_MODE_CONNECTOR_*)
+@@ -810,6 +840,36 @@ void drm_connector_cleanup(struct drm_connector *connector)
+ }
+ EXPORT_SYMBOL(drm_connector_cleanup);
+ 
++/**
++ * drm_connector_replay_oob_hotplug_event - send cached OOB HPD event
++ * @connector: the connector that should receive the event
++ *
++ * Send the cached out-of-band hotplug as a new out-of-band hotplug event.
++ */
++static void drm_connector_replay_oob_hotplug_event(struct drm_connector *connector)
++{
++	struct fwnode_handle *fwnode = connector->fwnode;
++	enum drm_connector_status status;
++	struct drm_oob_hotplug_state *e;
++	bool found = false;
++
++	if (!fwnode || !connector->funcs->oob_hotplug_event)
++		return;
++
++	scoped_guard(mutex, &oob_hotplug_list_lock) {
++		list_for_each_entry(e, &oob_hotplug_list, head) {
++			if (e->fwnode == fwnode || fwnode->secondary == e->fwnode) {
++				status = e->status;
++				found = true;
++				break;
++			}
++		}
++	}
++
++	if (found)
++		connector->funcs->oob_hotplug_event(connector, status);
++}
++
+ /**
+  * drm_connector_register - register a connector
+  * @connector: the connector to register
+@@ -830,6 +890,7 @@ EXPORT_SYMBOL(drm_connector_cleanup);
+  */
+ int drm_connector_register(struct drm_connector *connector)
+ {
++	bool replay_oob_hotplug = false;
+ 	int ret = 0;
+ 
+ 	if (!connector->dev->registered)
+@@ -869,6 +930,7 @@ int drm_connector_register(struct drm_connector *connector)
+ 	mutex_lock(&connector_list_lock);
+ 	list_add_tail(&connector->global_connector_list_entry, &connector_list);
+ 	mutex_unlock(&connector_list_lock);
++	replay_oob_hotplug = true;
+ 	goto unlock;
+ 
+ err_late_register:
+@@ -879,6 +941,10 @@ err_debugfs:
+ 	drm_sysfs_connector_remove(connector);
+ unlock:
+ 	mutex_unlock(&connector->mutex);
++
++	if (replay_oob_hotplug)
++		drm_connector_replay_oob_hotplug_event(connector);
++
+ 	return ret;
+ }
+ EXPORT_SYMBOL(drm_connector_register);
+@@ -3484,6 +3550,41 @@ struct drm_connector *drm_connector_find_by_fwnode(struct fwnode_handle *fwnode)
+ 	return found;
+ }
+ 
++/**
++ * drm_connector_record_oob_hotplug_status - Cache OOB hotplug status
++ * @fwnode - fwnode for the DRM connector
++ * @status - out-of-band status info
++ *
++ * Cache the latest out-of-band hotplug status for a fwnode so it can be
++ * (re)played from when the DRM device is (re)registered after this event
++ * arrived.
++ */
++static void drm_connector_record_oob_hotplug_status(struct fwnode_handle *fwnode,
++						    enum drm_connector_status status)
++{
++	struct drm_oob_hotplug_state *e;
++
++	if (!fwnode)
++		return;
++
++	guard(mutex)(&oob_hotplug_list_lock);
++
++	list_for_each_entry(e, &oob_hotplug_list, head) {
++		if (e->fwnode == fwnode) {
++			e->status = status;
++			return;
++		}
++	}
++
++	e = kzalloc(sizeof(*e), GFP_KERNEL);
++	if (!e)
++		return;
++
++	e->fwnode = fwnode_handle_get(fwnode);
++	e->status = status;
++	list_add_tail(&e->head, &oob_hotplug_list);
++}
++
+ /**
+  * drm_connector_oob_hotplug_event - Report out-of-band hotplug event to connector
+  * @connector_fwnode: fwnode_handle to report the event on
+@@ -3496,12 +3597,17 @@ struct drm_connector *drm_connector_find_by_fwnode(struct fwnode_handle *fwnode)
+  *
+  * This function can be used to report these out-of-band events after obtaining
+  * a drm_connector reference through calling drm_connector_find_by_fwnode().
++ *
++ * The last status for each fwnode is cached and replayed when a matching DRM
++ * connector device is (re)registered.
+  */
+ void drm_connector_oob_hotplug_event(struct fwnode_handle *connector_fwnode,
+ 				     enum drm_connector_status status)
+ {
+ 	struct drm_connector *connector;
+ 
++	drm_connector_record_oob_hotplug_status(connector_fwnode, status);
++
+ 	connector = drm_connector_find_by_fwnode(connector_fwnode);
+ 	if (IS_ERR(connector))
+ 		return;
+diff --git a/drivers/gpu/drm/drm_crtc_internal.h b/drivers/gpu/drm/drm_crtc_internal.h
+index 89706aa..4f59145 100644
+--- a/drivers/gpu/drm/drm_crtc_internal.h
++++ b/drivers/gpu/drm/drm_crtc_internal.h
+@@ -187,6 +187,7 @@ int drm_mode_getencoder(struct drm_device *dev,
+ /* drm_connector.c */
+ void drm_connector_ida_init(void);
+ void drm_connector_ida_destroy(void);
++void drm_connector_oob_hotplug_cleanup(void);
+ void drm_connector_unregister_all(struct drm_device *dev);
+ int drm_connector_register_all(struct drm_device *dev);
+ int drm_connector_set_obj_prop(struct drm_mode_object *obj,
+diff --git a/drivers/gpu/drm/drm_drv.c b/drivers/gpu/drm/drm_drv.c
+index 281231f..f1f6bba 100644
+--- a/drivers/gpu/drm/drm_drv.c
++++ b/drivers/gpu/drm/drm_drv.c
+@@ -1244,6 +1244,7 @@ static void drm_core_exit(void)
+ 	drm_sysfs_destroy();
+ 	WARN_ON(!xa_empty(&drm_minors_xa));
+ 	drm_connector_ida_destroy();
++	drm_connector_oob_hotplug_cleanup();
+ }
+ 
+ static int __init drm_core_init(void)
+diff --git a/drivers/gpu/drm/rockchip/dw_dp-rockchip.c b/drivers/gpu/drm/rockchip/dw_dp-rockchip.c
+index 410e5f4..90f0fc7 100644
+--- a/drivers/gpu/drm/rockchip/dw_dp-rockchip.c
++++ b/drivers/gpu/drm/rockchip/dw_dp-rockchip.c
+@@ -7,6 +7,8 @@
+  */
+ 
+ #include <linux/component.h>
++#include <linux/mfd/syscon.h>
++#include <linux/regmap.h>
+ #include <linux/of_device.h>
+ #include <linux/platform_device.h>
+ #include <drm/bridge/dw_dp.h>
+@@ -25,12 +27,71 @@
+ #include "rockchip_drm_drv.h"
+ #include "rockchip_drm_vop.h"
+ 
++#define RK3588_DP_SINK_HPD_SEL		BIT(10)
++#define RK3588_DP_SINK_HPD_CFG		BIT(11)
++#define RK3588_DP_SINK_HPD_MASK		(RK3588_DP_SINK_HPD_SEL | RK3588_DP_SINK_HPD_CFG)
++
+ struct rockchip_dw_dp {
+ 	struct dw_dp *base;
+ 	struct device *dev;
+ 	struct rockchip_encoder encoder;
++	struct regmap *vo_grf;
++	u32 hpd_reg;
+ };
+ 
++static void dw_dp_rockchip_set_hpd(void *data, bool high)
++{
++	struct rockchip_dw_dp *dp = data;
++	u32 value = RK3588_DP_SINK_HPD_MASK << 16;
++	int ret;
++
++	value |= RK3588_DP_SINK_HPD_SEL;
++	if (high)
++		value |= RK3588_DP_SINK_HPD_CFG;
++
++	ret = regmap_write(dp->vo_grf, dp->hpd_reg, value);
++	if (ret)
++		dev_err_ratelimited(dp->dev, "Failed to set DP HPD: %d\n", ret);
++}
++
++static void dw_dp_rockchip_init_hpd(struct rockchip_dw_dp *dp,
++				    struct dw_dp_plat_data *pdata)
++{
++	struct platform_device *pdev = to_platform_device(dp->dev);
++	struct device_node *node = dp->dev->of_node;
++	struct of_phandle_args phy;
++	struct resource *res;
++
++	if (!of_device_is_compatible(node, "rockchip,rk3588-dp"))
++		return;
++
++	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
++	if (!res)
++		return;
++
++	switch (res->start) {
++	case 0xfde50000:
++		dp->hpd_reg = 0;
++		break;
++	case 0xfde60000:
++		dp->hpd_reg = 8;
++		break;
++	default:
++		return;
++	}
++
++	if (of_parse_phandle_with_args(node, "phys", "#phy-cells", 0, &phy))
++		return;
++
++	dp->vo_grf = syscon_regmap_lookup_by_phandle(phy.np, "rockchip,vo-grf");
++	of_node_put(phy.np);
++	if (IS_ERR(dp->vo_grf))
++		return;
++
++	pdata->data = dp;
++	pdata->set_hpd = dw_dp_rockchip_set_hpd;
++}
++
+ static int dw_dp_encoder_atomic_check(struct drm_encoder *encoder,
+ 				      struct drm_crtc_state *crtc_state,
+ 				      struct drm_connector_state *conn_state)
+@@ -76,7 +137,8 @@ static const struct drm_encoder_helper_funcs dw_dp_encoder_helper_funcs = {
+ static int dw_dp_rockchip_bind(struct device *dev, struct device *master, void *data)
+ {
+ 	struct platform_device *pdev = to_platform_device(dev);
+-	const struct dw_dp_plat_data *plat_data;
++	const struct dw_dp_plat_data *match_data;
++	struct dw_dp_plat_data plat_data;
+ 	struct drm_device *drm_dev = data;
+ 	struct rockchip_dw_dp *dp;
+ 	struct drm_encoder *encoder;
+@@ -90,10 +152,13 @@ static int dw_dp_rockchip_bind(struct device *dev, struct device *master, void *
+ 	dp->dev = dev;
+ 	platform_set_drvdata(pdev, dp);
+ 
+-	plat_data = of_device_get_match_data(dev);
+-	if (!plat_data)
++	match_data = of_device_get_match_data(dev);
++	if (!match_data)
+ 		return -ENODEV;
+ 
++	plat_data = *match_data;
++	dw_dp_rockchip_init_hpd(dp, &plat_data);
++
+ 	encoder = &dp->encoder.encoder;
+ 	encoder->possible_crtcs = drm_of_find_possible_crtcs(drm_dev, dev->of_node);
+ 	rockchip_drm_encoder_set_crtc_endpoint_id(&dp->encoder, dev->of_node, 0, 0);
+@@ -103,7 +168,7 @@ static int dw_dp_rockchip_bind(struct device *dev, struct device *master, void *
+ 		return ret;
+ 	drm_encoder_helper_add(encoder, &dw_dp_encoder_helper_funcs);
+ 
+-	dp->base = dw_dp_bind(dev, encoder, plat_data);
++	dp->base = dw_dp_bind(dev, encoder, &plat_data);
+ 	if (IS_ERR(dp->base))
+ 		return PTR_ERR(dp->base);
+ 
+diff --git a/include/drm/bridge/dw_dp.h b/include/drm/bridge/dw_dp.h
+index 22105c3..a3c63c6 100644
+--- a/include/drm/bridge/dw_dp.h
++++ b/include/drm/bridge/dw_dp.h
+@@ -20,6 +20,8 @@ enum {
+ struct dw_dp_plat_data {
+ 	u32 max_link_rate;
+ 	u8 pixel_mode;
++	void *data;
++	void (*set_hpd)(void *data, bool high);
+ };
+ 
+ struct dw_dp *dw_dp_bind(struct device *dev, struct drm_encoder *encoder,
+diff --git a/include/drm/drm_bridge.h b/include/drm/drm_bridge.h
+index eb98f5b..97f6811 100644
+--- a/include/drm/drm_bridge.h
++++ b/include/drm/drm_bridge.h
+@@ -672,6 +672,20 @@ struct drm_bridge_funcs {
+ 	 */
+ 	void (*hpd_disable)(struct drm_bridge *bridge);
+ 
++	/**
++	 * @oob_notify:
++	 *
++	 * Notify the bridge of out of band hot plug detection.
++	 *
++	 * This callback is optional, it may be implemented by bridges that
++	 * need to be notified of display connection or disconnection for
++	 * internal reasons. One use case is to force the DP controllers HPD
++	 * signal for USB-C DP AltMode.
++	 */
++	void (*oob_notify)(struct drm_bridge *bridge,
++			   struct drm_connector *connector,
++			   enum drm_connector_status status);
++
+ 	/**
+ 	 * @hdmi_tmds_char_rate_valid:
+ 	 *

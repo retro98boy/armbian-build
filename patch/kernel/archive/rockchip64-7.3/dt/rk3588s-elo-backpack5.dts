@@ -83,6 +83,20 @@
 	};
 #endif
 
+	dp0-sound {
+		compatible = "simple-audio-card";
+		simple-audio-card,name = "dp-sound";
+		simple-audio-card,mclk-fs = <512>;
+
+		simple-audio-card,cpu {
+			sound-dai = <&spdif_tx2>;
+		};
+
+		simple-audio-card,codec {
+			sound-dai = <&dp0 1>;
+		};
+	};
+
 	hdmi0-con {
 		compatible = "hdmi-connector";
 		/* ddc-i2c-bus = <&hdmi0_ddc>; */
@@ -239,6 +253,7 @@
 };
 
 &dp0 {
+	#sound-dai-cells = <1>;
 	status = "okay";
 };
 
@@ -456,6 +471,7 @@
 		usb_con: connector {
 			compatible = "usb-c-connector";
 			label = "USB-C";
+			displayport = <&dp0>;
 			data-role = "dual";
 			power-role = "dual";
 			try-power-role = "sink";
@@ -1146,6 +1162,10 @@
 };
 
 &usb_host2_xhci {
+	status = "okay";
+};
+
+&spdif_tx2 {
 	status = "okay";
 };
 
